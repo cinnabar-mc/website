@@ -22,15 +22,20 @@ names the release manifest, API contract, title and icon used by the renderer.
 `source.py fetch` materializes only those files in the ignored `.source/` checkout.
 To render against another local client checkout, use `python3 render.py --source PATH`.
 
-The hourly Update client inputs workflow checks the client's `dev` branch. It
-opens a tested PR changing the pin only when one of the declared inputs changes;
-unrelated client commits leave the pin alone. One input-update PR stays open at a
-time. Updates require review and merge before deployment. To check manually:
+Update the client pin explicitly when release metadata, the API origin, or branding
+changes. This command compares the declared inputs with the client's `dev` branch
+and leaves the pin unchanged for unrelated client commits:
 
 ```sh
 python3 source.py update
+git diff -- source.json
 python3 render.py
+node --test tests/*.test.cjs
+python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
+
+Open a PR with the updated pin after checking the generated site. Pin updates do
+not require cross-repository credentials or organization-wide Actions permissions.
 
 ## Deploy
 
@@ -42,8 +47,6 @@ published file with the build. Other branches can validate without deploying.
 The `website` GitHub environment supplies the `CLOUDFLARE_API_TOKEN` secret and
 `CLOUDFLARE_ACCOUNT_ID` variable. `wrangler.jsonc` identifies the existing Worker
 and account, serves `dist/` without a Worker script, and disables request logs.
-The input-update workflow needs Actions permission to create pull requests and
-dispatch the Website workflow, because token-created PRs do not trigger CI.
 
 The `RestartFU/configurations` repository owns the custom domain's Caddy proxy.
 It forwards requests to the Worker over HTTPS while preserving the public domain,
