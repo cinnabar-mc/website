@@ -49,7 +49,7 @@ class RenderTests(unittest.TestCase):
             platform: {arch: "fixture-" + name for arch, name in arches.items()}
             for platform, arches in self.config["assets"].items()
         }
-        for path in (RENDER.INPUTS["icon"], RENDER.INPUTS["title"]):
+        for path in (RENDER.INPUTS["icon"], RENDER.INPUTS["title"], RENDER.INPUTS["discord_mark"]):
             target = self.repository / path
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(SOURCE / path, target)
@@ -65,6 +65,11 @@ class RenderTests(unittest.TestCase):
     def config_from_output(self):
         script = (self.output / "downloads.js").read_text()
         return json.loads(script.removeprefix("window.CINNABAR_DOWNLOADS = ").removesuffix(";\n"))
+
+    def test_discord_mark_uses_shared_client_branding(self):
+        (self.repository / RENDER.INPUTS["discord_mark"]).write_text("M0 0L1 1Z\n")
+        RENDER.build(self.repository, self.output)
+        self.assertIn('<path d="M0 0L1 1Z"', (self.output / "index.html").read_text())
 
     def test_build_requires_only_artwork_and_manifest_and_redirects_to_release_assets(self):
         RENDER.build(self.repository, self.output)

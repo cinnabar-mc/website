@@ -14,7 +14,7 @@ env:
   WEBSITE_URL: 'https://cinnabar.cinnabar-api.workers.dev'
 
 concurrency:
-  group: website-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
+  group: website-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:

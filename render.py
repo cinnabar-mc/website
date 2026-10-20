@@ -35,6 +35,7 @@ def build(repository, output):
     icon = (repository / INPUTS["icon"]).read_text()
     red = ET.fromstring(icon).find("{http://www.w3.org/2000/svg}rect").attrib["fill"]
     page = (HERE / "index.html.in").read_text()
+    page = page.replace("@@DISCORD_MARK@@", (repository / INPUTS["discord_mark"]).read_text().strip())
     page = page.replace("@@RED@@", red)
     page = page.replace("@@FAVICON@@", "data:image/svg+xml," + quote(icon, safe=""))
     page = page.replace("@@REPOSITORY_URL@@", repository_url)

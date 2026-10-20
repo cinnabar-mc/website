@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   update:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -27,9 +28,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          count=$(gh pr list --state open --json headRefName \
-            --jq '[.[] | select(.headRefName | startswith("automation/client-inputs-"))] | length')
-          echo "count=$count" >> "$GITHUB_OUTPUT"
+          branch=$(gh pr list --state open --limit 1000 --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("automation/client-inputs-"))][0].headRefName // ""')
+          if [ -z "$branch" ]; then
+            echo 'count=0' >> "$GITHUB_OUTPUT"
+          else
+            echo 'count=1' >> "$GITHUB_OUTPUT"
+            runs=$(gh run list --workflow website.yml --branch "$branch" --limit 1 \
+              --json databaseId --jq length)
+            if [ "$runs" = 0 ]; then
+              gh workflow run website.yml --ref "$branch"
+            fi
+          fi
       - name: Check upstream inputs
         if: steps.pending.outputs.count == '0'
         id: source

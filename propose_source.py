@@ -11,16 +11,40 @@ def run(*arguments):
     subprocess.run(arguments, cwd=HERE, check=True)
 
 
-if __name__ == "__main__":
+def propose():
+    """Create an input PR, reusing its remote branch after an interrupted attempt."""
     branch = "automation/client-inputs-" + load_config()["revision"]
-    run("git", "switch", "-c", branch)
+    remote = subprocess.run(
+        ["git", "ls-remote", "--exit-code", "--heads", "origin", "refs/heads/" + branch],
+        cwd=HERE, check=False, capture_output=True,
+    )
+    if remote.returncode == 0:
+        proposed = (HERE / "source.json").read_bytes()
+        run("git", "fetch", "origin", "refs/heads/" + branch)
+        run("git", "restore", "--", "source.json")
+        run("git", "switch", "-C", branch, "FETCH_HEAD")
+        (HERE / "source.json").write_bytes(proposed)
+    elif remote.returncode == 2:
+        run("git", "switch", "-c", branch)
+    else:
+        raise RuntimeError("could not check the existing proposal branch")
     run("git", "config", "user.name", "github-actions[bot]")
     run("git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
     run("git", "add", "source.json")
-    run("git", "commit", "-m", "Update shared client inputs")
+    difference = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"], cwd=HERE, check=False
+    ).returncode
+    if difference == 1:
+        run("git", "commit", "-m", "Update shared client inputs")
+    elif difference != 0:
+        raise RuntimeError("could not compare the proposed input pin")
     run("git", "push", "origin", branch)
     run("gh", "pr", "create", "--base", "main", "--head", branch,
         "--title", "Update shared client inputs", "--body-file", ".github/source-update.md",
         "--label", "internal")
     # Token-created PRs do not trigger pull_request workflows.
     run("gh", "workflow", "run", "website.yml", "--ref", branch)
+
+
+if __name__ == "__main__":
+    propose()
