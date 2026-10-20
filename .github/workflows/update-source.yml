@@ -28,8 +28,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          branch=$(gh pr list --state open --limit 1000 --json headRefName \
-            --jq '[.[] | select(.headRefName | startswith("automation/client-inputs-"))][0].headRefName // ""')
+          branch=$(python3 propose_source.py pending)
           if [ -z "$branch" ]; then
             echo 'count=0' >> "$GITHUB_OUTPUT"
           else

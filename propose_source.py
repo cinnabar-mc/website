@@ -1,9 +1,22 @@
 #!/usr/bin/env python3
 """Open a reviewed update to shared client inputs from the scheduled workflow."""
 
+import argparse
+import json
 import subprocess
 
 from source import HERE, load_config
+
+BRANCH_PREFIX = "automation/client-inputs-"
+
+
+def pending_branch(pull_requests):
+    """Select an input-update PR from this repository targeting main, excluding forks."""
+    return next((
+        pr["headRefName"] for pr in pull_requests
+        if not pr["isCrossRepository"] and pr["baseRefName"] == "main"
+        and pr["headRefName"].startswith(BRANCH_PREFIX)
+    ), "")
 
 
 def run(*arguments):
@@ -13,7 +26,7 @@ def run(*arguments):
 
 def propose():
     """Create an input PR, reusing its remote branch after an interrupted attempt."""
-    branch = "automation/client-inputs-" + load_config()["revision"]
+    branch = BRANCH_PREFIX + load_config()["revision"]
     remote = subprocess.run(
         ["git", "ls-remote", "--exit-code", "--heads", "origin", "refs/heads/" + branch],
         cwd=HERE, check=False, capture_output=True,
@@ -47,4 +60,14 @@ def propose():
 
 
 if __name__ == "__main__":
-    propose()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("pending", "create"), nargs="?", default="create")
+    args = parser.parse_args()
+    if args.command == "pending":
+        requests = subprocess.check_output(
+            ["gh", "pr", "list", "--state", "open", "--base", "main", "--limit", "1000",
+             "--json", "headRefName,isCrossRepository,baseRefName"], cwd=HERE, text=True,
+        )
+        print(pending_branch(json.loads(requests)))
+    else:
+        propose()
