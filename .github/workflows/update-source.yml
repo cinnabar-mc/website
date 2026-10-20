@@ -1,0 +1,60 @@
+name: Update client inputs
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: update-client-inputs
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Check for an existing input update
+        id: pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch=$(python3 propose_source.py pending)
+          if [ -z "$branch" ]; then
+            echo 'count=0' >> "$GITHUB_OUTPUT"
+          else
+            echo 'count=1' >> "$GITHUB_OUTPUT"
+            runs=$(gh run list --workflow website.yml --branch "$branch" --limit 1 \
+              --json databaseId --jq length)
+            if [ "$runs" = 0 ]; then
+              gh workflow run website.yml --ref "$branch"
+            fi
+          fi
+      - name: Check upstream inputs
+        if: steps.pending.outputs.count == '0'
+        id: source
+        run: |
+          python3 source.py update
+          if ! git diff --quiet -- source.json; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Validate updated inputs
+        if: steps.source.outputs.changed == 'true'
+        run: |
+          python3 render.py
+          node --test tests/*.test.cjs
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Propose the updated pin
+        if: steps.source.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 propose_source.py
