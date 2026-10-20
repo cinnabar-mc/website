@@ -40,8 +40,8 @@ not require cross-repository credentials or organization-wide Actions permission
 ## Deploy
 
 The Website workflow tests every PR and validates the pinned Wrangler version
-with a dry run. Pushes to `dev` deploy after verification; manual dispatch deploys
-only when run on `dev`. The workflow follows redirects and byte-compares every
+with a dry run. Pushes to `main` deploy after verification; manual dispatch deploys
+only when run on `main`. The workflow follows redirects and byte-compares every
 published file with the build. Other branches can validate without deploying.
 
 The `website` GitHub environment supplies the `CLOUDFLARE_API_TOKEN` secret and
