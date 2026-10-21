@@ -148,8 +148,7 @@
       message.hidden = true; plot.toggleAttribute("hidden", false);
       let sum = 0, samples = 0, peak = 0;
       data.points.forEach(function (point) { sum += point.online * point.samples; samples += point.samples; peak = Math.max(peak, point.peak); });
-      summary.textContent = "Peak " + number.format(peak) + " · Average " + number.format(sum / samples)
-        + " · " + number.format(samples) + " sampled minutes";
+      summary.textContent = "Peak " + number.format(peak) + " · Average " + number.format(sum / samples);
       draw();
     } catch (error) {
       if (request === sequence) showMessage("Player history is unavailable. Trying again shortly.");

@@ -79,7 +79,7 @@ test('renders measured data, supports keyboard inspection, and retries after err
   await p.reply(0, history());
   const plot = p.elements['history-plot'];
   assert.equal(plot.hasAttribute('hidden'), false);
-  assert.match(p.elements['history-summary'].textContent, /Peak 8 · Average 4 · 3 sampled minutes/);
+  assert.match(p.elements['history-summary'].textContent, /^Peak 8 · Average 4$/);
   assert.equal(plot.children.filter(child => child.attributes.class === 'chart-line').length, 1);
   plot.events.keydown({key: 'Home', preventDefault() {}});
   assert.match(p.elements['history-detail'].textContent, /0 players/);
