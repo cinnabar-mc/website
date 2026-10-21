@@ -53,7 +53,7 @@ change. The workflow's `WEBSITE_URL` selects the post-deploy verification target
 
 ## Player presence
 
-The line below the downloads shows unique connected, visible Cinnabar accounts
+The player activity section shows unique connected, visible Cinnabar accounts
 from `GET /v1/presence/count`. The API origin comes from the shared bridge contract.
 It refreshes once per minute while the page is visible, with a five-second request
 timeout. Failed or invalid responses clear the count; background tabs stop polling.

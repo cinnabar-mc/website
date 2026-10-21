@@ -23,15 +23,27 @@ class Page(HTMLParser):
         self.scripts = []
         self.downloads = []
         self.repository = None
+        self.elements = []
+        self.ancestors = []
 
     def handle_starttag(self, tag, attributes):
         attrs = dict(attributes)
+        self.elements.append((tag, attrs, self.ancestors.copy()))
         if tag == "script":
             self.scripts.append(attrs)
         if tag == "a" and "data-release-asset" in attrs:
             self.downloads.append(attrs["data-release-asset"])
         if tag == "a" and attrs.get("class") == "github":
             self.repository = attrs["href"]
+        if tag not in {"meta", "link", "img", "input", "br"}:
+            self.ancestors.append((tag, attrs))
+
+    def handle_endtag(self, tag):
+        """Track enclosing regions so tests can check reading and grouping order."""
+        for index in range(len(self.ancestors) - 1, -1, -1):
+            if self.ancestors[index][0] == tag:
+                del self.ancestors[index:]
+                break
 
 
 class RenderTests(unittest.TestCase):
@@ -70,6 +82,27 @@ class RenderTests(unittest.TestCase):
         (self.repository / RENDER.INPUTS["discord_mark"]).write_text("M0 0L1 1Z\n")
         RENDER.build(self.repository, self.output)
         self.assertIn('<path d="M0 0L1 1Z"', (self.output / "index.html").read_text())
+
+    def test_download_guidance_and_player_activity_stay_grouped(self):
+        """Keep social navigation separate and presence inside its history region."""
+        RENDER.build(self.repository, self.output)
+        page = Page()
+        page.feed((self.output / "index.html").read_text())
+        positions = {}
+        for index, (tag, attrs, ancestors) in enumerate(page.elements):
+            if attrs.get("class") in {"github", "discord"}:
+                self.assertIn("header", [parent for parent, _ in ancestors])
+                self.assertNotIn("main", [parent for parent, _ in ancestors])
+            key = attrs.get("id") or attrs.get("class")
+            if key in {"download", "disclaimer", "online-count", "history-plot"}:
+                positions[key] = index
+                if key in {"download", "disclaimer"}:
+                    self.assertTrue(any(parent.get("class") == "hero" for _, parent in ancestors))
+                else:
+                    self.assertTrue(any(parent.get("aria-labelledby") == "history-title"
+                                        for _, parent in ancestors))
+        self.assertEqual(sorted(positions, key=positions.get),
+                         ["download", "disclaimer", "online-count", "history-plot"])
 
     def test_build_requires_only_artwork_and_manifest_and_redirects_to_release_assets(self):
         RENDER.build(self.repository, self.output)
