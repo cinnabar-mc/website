@@ -100,6 +100,20 @@ test('renders measured data, supports keyboard inspection, and retries after err
   assert.match(p.elements['history-message'].textContent, /No history yet/);
 });
 
+test('bypasses browser caching on every poll so the peak follows new samples', async () => {
+  const p = page();
+  assert.equal(p.requests[0].options.cache, 'no-store');
+  await p.reply(0, history());
+  assert.match(p.elements['history-summary'].textContent, /^Peak 8 /);
+
+  [...p.timers.values()][0].callback();
+  assert.equal(p.requests[1].options.cache, 'no-store');
+  const updated = history();
+  updated.points.push({at: 300000, online: 12, peak: 12, samples: 1});
+  await p.reply(1, updated);
+  assert.match(p.elements['history-summary'].textContent, /^Peak 12 · Average 6$/);
+});
+
 test('ignores obsolete responses on range changes and pauses requests in background tabs', async () => {
   const p = page(true);
   assert.equal(p.requests.length, 0);
