@@ -164,7 +164,8 @@
       <p class="first-open">If macOS blocks the first launch, run this once in Terminal, then open Cinnabar again:<code>xattr -dr com.apple.quarantine /Applications/Cinnabar.app</code></p>
     </div>
     <div id="desktop-install" hidden>
-      <p>Cinnabar is available for desktop computers.</p>
+      <p>Choose a platform to download Cinnabar.</p>
+      <a class="download-option" data-release-asset="android/arm64">Android — ARM64 APK</a>
       <a class="download-option" data-release-asset="windows/x86_64">Windows setup</a>
       <a class="download-option" data-release-asset="linux/x86_64">Linux AppImage</a>
       <a class="download-option" data-release-asset="macos/arm64">macOS — Apple silicon</a>

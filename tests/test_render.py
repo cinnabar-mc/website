@@ -61,6 +61,10 @@ class RenderTests(unittest.TestCase):
             platform: {arch: "fixture-" + name for arch, name in arches.items()}
             for platform, arches in self.config["assets"].items()
         }
+        self.config["manual_assets"] = {
+            platform: {arch: "fixture-" + name for arch, name in arches.items()}
+            for platform, arches in self.config["manual_assets"].items()
+        }
         for path in (RENDER.INPUTS["icon"], RENDER.INPUTS["title"], RENDER.INPUTS["discord_mark"]):
             target = self.repository / path
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -110,6 +114,7 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(config["online_count_url"], "https://fixture-api.invalid/v1/presence/count")
         self.assertEqual(config["online_history_url"], "https://fixture-api.invalid/v1/presence/history")
         self.assertEqual(config["assets"], self.config["assets"])
+        self.assertEqual(config["manual_assets"], self.config["manual_assets"])
         release = urlsplit(config["release_url"])
         self.assertEqual(release.scheme, "https")
         self.assertEqual(release.path, f'/{self.config["repository"]}/releases/latest')
@@ -140,7 +145,9 @@ class RenderTests(unittest.TestCase):
             self.assertTrue((self.output / script["src"].lstrip("/")).is_file())
         for selection in page.downloads:
             platform, architecture = selection.split("/")
-            self.assertIn(architecture, config["assets"][platform])
+            assets = {**config["assets"], **config["manual_assets"]}
+            self.assertIn(architecture, assets[platform])
+        self.assertIn("android/arm64", page.downloads)
         self.assertIn('aria-haspopup="menu"', html)
         self.assertEqual(html.count('role="menuitemradio"'), 2)
         self.assertIn("Nightly (Unstable)", html)

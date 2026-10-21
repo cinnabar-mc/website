@@ -9,6 +9,7 @@ const output = process.env.CINNABAR_SITE_OUTPUT || path.join(root, 'dist');
 const context = {window: {}};
 vm.runInNewContext(fs.readFileSync(path.join(output, 'downloads.js'), 'utf8'), context);
 const config = context.window.CINNABAR_DOWNLOADS;
+const assets = {...config.assets, ...config.manual_assets};
 const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 
 test('Linux command fetches the installer from the latest GitHub release', () => {
@@ -18,7 +19,7 @@ test('Linux command fetches the installer from the latest GitHub release', () =>
   assert.equal(release.pathname, `/${config.repository}/releases/latest/download/`);
 });
 
-function page(userAgent, platform, touchPoints = 0) {
+function page(userAgent, platform, touchPoints = 0, clientPlatform) {
   const elements = new Map();
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
@@ -41,10 +42,10 @@ function page(userAgent, platform, touchPoints = 0) {
   element('download-split').children = [element('channel-toggle'), element('channel-menu'), ...Object.keys(channelIds).map(element)];
   const outside = {};
   const documentListeners = {};
-  const links = Object.entries(config.assets).flatMap(([os, arches]) =>
+  const links = Object.entries(assets).flatMap(([os, arches]) =>
     Object.keys(arches).map(arch => ({dataset: {releaseAsset: `${os}/${arch}`}})));
   const window = {CINNABAR_DOWNLOADS: config, location: {assign(url) { this.destination = url; }}};
-  const navigator = {userAgent, platform, maxTouchPoints: touchPoints,
+  const navigator = {userAgent, platform, maxTouchPoints: touchPoints, userAgentData: clientPlatform ? {platform: clientPlatform} : undefined,
     clipboard: {writeText: async text => { navigator.copied = text; }}};
   vm.runInNewContext(source, {window, navigator, document: {
     getElementById: element, querySelectorAll: () => links,
@@ -83,17 +84,31 @@ test('Mac users get separate Apple silicon and Intel disk images', () => {
   assert.equal(p.element('macos-install').hidden, false);
   for (const link of p.links) {
     const [os, arch] = link.dataset.releaseAsset.split('/');
-    assert.equal(link.href, config.download_base + config.assets[os][arch]);
+    assert.equal(link.href, config.download_base + assets[os][arch]);
   }
 });
 
-test('mobile, iPad desktop agents and ChromeOS offer desktop choices', () => {
-  for (const [agent, platform, touch] of [['Linux; Android', 'Linux', 5], ['iPhone', 'iPhone', 5],
+test('Android downloads the manifest APK instead of the Linux installer', () => {
+  for (const [agent, platform, hints] of [['Linux; Android 15; Pixel 9', 'Linux aarch64'],
+    ['Linux', 'Linux', 'Android'], ['Android', '', undefined]]) {
+    const p = page(agent, platform, 5, hints);
+    assert.equal(p.element('download-label').textContent, 'Download for Android');
+    p.click('download');
+    assert.equal(p.window.location.destination, config.download_base + config.manual_assets.android.arm64);
+    assert.equal(p.element('install-dialog').open, undefined);
+  }
+});
+
+test('iOS, iPad desktop agents and ChromeOS offer all platform choices', () => {
+  for (const [agent, platform, touch] of [['iPhone', 'iPhone', 5],
     ['Macintosh', 'MacIntel', 5], ['X11; CrOS', 'Linux', 0], ['unknown', '', 0]]) {
     const p = page(agent, platform, touch);
     p.click('download');
     assert.equal(p.element('desktop-install').hidden, false);
-    assert.equal(p.element('download-label').textContent, 'Desktop downloads');
+    assert.equal(p.element('download-label').textContent, 'Downloads');
+    assert.equal(p.element('install-title').textContent, 'Choose your platform');
+    assert.equal(p.links.find(link => link.dataset.releaseAsset === 'android/arm64').href,
+      config.download_base + config.manual_assets.android.arm64);
   }
 });
 
@@ -115,7 +130,18 @@ test('clipboard rejection selects the install command for manual copying', async
   assert.equal(p.element('install-command').selected, true);
 });
 
-const nightlyAsset = (os, arch) => config.nightly_base + config.assets[os][arch];
+const nightlyAsset = (os, arch) => config.nightly_base + assets[os][arch];
+
+test('Android channel selection downloads the matching APK and keeps it selected', () => {
+  const p = page('Linux; Android 15', 'Linux aarch64', 5);
+  p.click('channel-nightly');
+  assert.equal(p.window.location.destination, nightlyAsset('android', 'arm64'));
+  assert.equal(p.element('channel-nightly').attrs['aria-checked'], 'true');
+  p.click('download');
+  assert.equal(p.window.location.destination, nightlyAsset('android', 'arm64'));
+  p.click('channel-beta');
+  assert.equal(p.window.location.destination, config.download_base + config.manual_assets.android.arm64);
+});
 
 test('nightly URLs derive from the repository and manifest assets', () => {
   const nightly = new URL(config.nightly_base);

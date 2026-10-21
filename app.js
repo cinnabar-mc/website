@@ -1,5 +1,6 @@
 function detectPlatform(userAgent, platform, touchPoints) {
-  if (/Android|iPhone|iPad|iPod/i.test(userAgent) || (/Mac/i.test(platform) && touchPoints > 1)) return 'mobile';
+  if (/Android/i.test(platform + ' ' + userAgent)) return 'android';
+  if (/iPhone|iPad|iPod/i.test(userAgent) || (/Mac/i.test(platform) && touchPoints > 1)) return 'mobile';
   if (/Windows|Win/i.test(platform + ' ' + userAgent)) return 'windows';
   if (/CrOS/i.test(userAgent)) return 'unsupported';
   if (/Mac/i.test(platform + ' ' + userAgent)) return 'macos';
@@ -8,11 +9,12 @@ function detectPlatform(userAgent, platform, touchPoints) {
 }
 
 const config = window.CINNABAR_DOWNLOADS;
+const assets = {...config.assets, ...config.manual_assets};
 const platform = detectPlatform(navigator.userAgent, navigator.userAgentData?.platform || navigator.platform, navigator.maxTouchPoints);
-const labels = {windows: 'Windows', macos: 'macOS', linux: 'Linux'};
+const labels = {windows: 'Windows', macos: 'macOS', linux: 'Linux', android: 'Android'};
 const button = document.getElementById('download');
 const dialog = document.getElementById('install-dialog');
-document.getElementById('download-label').textContent = labels[platform] ? `Download for ${labels[platform]}` : 'Desktop downloads';
+document.getElementById('download-label').textContent = labels[platform] ? `Download for ${labels[platform]}` : 'Downloads';
 const split = document.getElementById('download-split');
 const toggle = document.getElementById('channel-toggle');
 const menu = document.getElementById('channel-menu');
@@ -25,7 +27,7 @@ function applyChannel() {
   document.getElementById('install-command').value = installCommand();
   document.querySelectorAll('[data-release-asset]').forEach(link => {
     const [os, arch] = link.dataset.releaseAsset.split('/');
-    link.href = base() + config.assets[os][arch];
+    link.href = base() + assets[os][arch];
   });
   options.forEach(option => option.setAttribute('aria-checked', String(option.dataset.channel === channel)));
 }
@@ -75,10 +77,14 @@ function startDownload() {
     window.location.assign(base() + config.assets.windows.x86_64);
     return;
   }
+  if (platform === 'android') {
+    window.location.assign(base() + assets.android.arm64);
+    return;
+  }
   document.getElementById('linux-install').hidden = platform !== 'linux';
   document.getElementById('macos-install').hidden = platform !== 'macos';
   document.getElementById('desktop-install').hidden = platform === 'linux' || platform === 'macos';
-  document.getElementById('install-title').textContent = platform === 'linux' ? 'Install on Linux' : platform === 'macos' ? 'Download for macOS' : 'Choose your desktop';
+  document.getElementById('install-title').textContent = platform === 'linux' ? 'Install on Linux' : platform === 'macos' ? 'Download for macOS' : 'Choose your platform';
   document.getElementById('copy-command').textContent = 'Copy';
   document.getElementById('copy-status').textContent = '';
   dialog.showModal();
