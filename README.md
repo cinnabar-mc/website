@@ -66,8 +66,6 @@ and averages calculated from observed minutes only. Missing buckets appear as
 gaps; recorded zeroes sit on the baseline. History starts when the API collector
 is deployed, without backfilled estimates.
 
-The chart refreshes every minute while visible and bypasses the browser cache
-on each request. The API's shared cache still limits upstream reads to once per
-minute. Range changes cancel older requests; empty history and errors have
-explicit messages. Hover or touch the plot to inspect a sample, or focus it and
-use the arrow, Home and End keys.
+The chart refreshes every minute while visible. Range changes cancel older
+requests; empty history and errors have explicit messages. Hover or touch the
+plot to inspect a sample, or focus it and use the arrow, Home and End keys.
