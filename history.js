@@ -133,7 +133,7 @@
     try {
       const url = new URL(window.CINNABAR_DOWNLOADS.online_history_url);
       url.searchParams.set("range", range);
-      const response = await fetch(url, { credentials: "omit", referrerPolicy: "no-referrer",
+      const response = await fetch(url, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer",
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]) });
       if (!response.ok) throw new Error("History unavailable");
       const result = await response.json();
