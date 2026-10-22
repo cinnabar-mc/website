@@ -6,18 +6,14 @@
   <meta name="description" content="Explore a browser demo of free community mods for Cinnabar.">
   <title>Marketplace · Cinnabar</title>
   <link rel="icon" type="image/svg+xml" href="@@FAVICON@@">
-  <style>:root { --red: @@RED@@; }</style>
+  <link rel="stylesheet" href="/site.css">
   <link rel="stylesheet" href="/marketplace/marketplace.css">
   <script src="/marketplace/marketplace-model.js" defer></script>
   <script src="/marketplace/marketplace.js" defer></script>
 </head>
-<body>
+<body class="marketplace-page">
   <a class="skip-link" href="#main">Skip to marketplace</a>
-  <header class="site-header">
-    <a class="brand" href="/" aria-label="Cinnabar home"><img src="@@FAVICON@@" width="28" height="28" alt="">Cinnabar</a>
-    <nav aria-label="Website"><a href="/">Get the client</a><a href="/marketplace/" aria-current="page">Marketplace</a></nav>
-    <button type="button" class="subtle" id="signin-link">Microsoft sign-in setup</button>
-  </header>
+  @@SITE_HEADER@@
   <main id="main" class="shell">
     <aside class="demo-notice" aria-label="Demo limitations">
       <strong>Browser demo</strong><span>Synthetic sample catalog. Changes stay on this device. No downloads or real accounts.</span>
@@ -28,7 +24,16 @@
       <label>Demo role<select id="demo-role"></select></label>
       <button type="button" class="subtle" id="reset-demo">Reset demo data</button>
     </section>
-    <div class="page-heading"><div><h1>Marketplace</h1><p>Small additions. More ways to make it yours.</p></div><span class="role-indicator" id="role-indicator">Local demo · Player</span></div>
+    <div class="page-heading">
+      <div class="marketplace-title">
+        <img class="logo marketplace-logo" src="/title.png" alt="Cinnabar" width="1022" height="282">
+        <div><h1>Marketplace</h1><p>Small additions. More ways to make it yours.</p></div>
+      </div>
+      <div class="account-tools">
+        <span class="role-indicator" id="role-indicator">Local demo · Player</span>
+        <button type="button" class="subtle" id="signin-link">Microsoft sign-in setup</button>
+      </div>
+    </div>
     <nav class="workspace-nav" aria-label="Marketplace sections" id="workspace-nav"></nav>
     <p id="feedback" role="status" aria-live="polite" aria-atomic="true"></p>
     <div id="workspace"><div class="loading" role="status">Loading the sample catalog…</div></div>

@@ -52,11 +52,30 @@
   }
 
   /** Create a button with an explicit action, bypassing implicit form submission. */
-  function button(text, action, className = '') {
+  function button(text, action, className = '', focusKey = '') {
     const result = node('button', className, text);
     result.type = 'button';
+    if (focusKey) result.dataset.focusKey = focusKey;
     result.addEventListener('click', action);
     return result;
+  }
+
+  /** Restore a replaced control, or hand focus to its selected entry or workspace. */
+  function restoreFocus(previous) {
+    const key = previous?.dataset.focusKey;
+    if (!key || previous.isConnected) return;
+    const controls = [...document.querySelectorAll('[data-focus-key]')];
+    let successor;
+    if (view === 'creator') successor = `creator:entry:${editingId}`;
+    else if (view === 'review') successor = `review:entry:${reviewId}`;
+    else if (view === 'browse' || view === 'library') successor = `catalog:library:${selectedId}`;
+    for (const candidate of [key, successor, 'catalog:recovery', `nav:${view}`]) {
+      const control = controls.find(item => item.dataset.focusKey === candidate && !item.disabled);
+      if (control) {
+        control.focus();
+        return;
+      }
+    }
   }
 
   /** Announce local action outcomes in a persistent live region. */
@@ -92,7 +111,7 @@
   function empty(title, text, actionText, action) {
     const result = node('div', 'empty');
     result.append(node('h2', '', title), node('p', '', text));
-    if (action) result.append(button(actionText, action));
+    if (action) result.append(button(actionText, action, '', 'catalog:recovery'));
     return result;
   }
 
@@ -113,7 +132,7 @@
     if (model.can('staff.manage')) sections.push(['staff', 'Staff & audit']);
     if (view !== 'signin' && !sections.some(([id]) => id === view)) view = 'browse';
     document.getElementById('workspace-nav').replaceChildren(...sections.map(([id, text]) => {
-      const control = button(text, () => navigate(id));
+      const control = button(text, () => navigate(id), '', `nav:${id}`);
       if (id === view) control.setAttribute('aria-current', 'page');
       return control;
     }));
@@ -123,6 +142,7 @@
 
   /** Render the current local workspace and role indicator. */
   function render() {
+    const focused = document.activeElement;
     renderNavigation();
     workspace.replaceChildren();
     if (view === 'browse' || view === 'library') renderStore();
@@ -130,6 +150,7 @@
     else if (view === 'review') renderReview();
     else if (view === 'staff') renderStaff();
     else renderSignIn();
+    restoreFocus(focused);
   }
 
   /** Return a listing detail with requested capabilities ahead of its library action. */
@@ -137,7 +158,7 @@
     const result = node('section', 'detail');
     result.setAttribute('aria-label', `${entry.title} details`);
     const top = node('div', 'detail-top');
-    top.append(icon(entry.icon, entry.tone), node('span', 'badge', libraryAction ? 'Free community mod' : label(entry.status)));
+    top.append(icon(entry.icon, entry.tone), node('span', 'badge', libraryAction && entry.status === 'published' ? 'Free community mod' : label(entry.status)));
     result.append(top, node('h2', '', entry.title), node('p', 'byline', `By ${entry.creator}`), node('p', 'description', entry.description));
     const metadata = node('dl', 'metadata');
     for (const [term, value] of [['Version', entry.version], ['Category', entry.category], ['License', entry.license || 'Not specified']]) {
@@ -157,11 +178,12 @@
     result.append(metadata, permissions);
     if (libraryAction) {
       const added = model.library().includes(entry.id);
+      if (entry.status !== 'published') result.append(node('p', 'notice', `${label(entry.status)} · This mod is unavailable. You can remove its saved selection from your demo library.`));
       const control = button(added ? 'Remove from demo library' : 'Add to demo library', () => {
         mutate(() => model.toggleLibrary(entry.id, Date.now()), added ? `${entry.title} removed from your demo library.` : `${entry.title} added to your demo library. No files were downloaded.`);
-        const replacement = workspace.querySelector('.detail button');
+        const replacement = workspace.querySelector('.detail button') || workspace.querySelector('[data-focus-key="catalog:recovery"]');
         if (replacement) replacement.focus();
-      }, added ? '' : 'primary');
+      }, added ? '' : 'primary', `catalog:library:${entry.id}`);
       result.append(control, node('p', 'hint', 'Saved in this browser only. Nothing is downloaded or installed.'));
     }
     return result;
@@ -173,15 +195,18 @@
     const searchLabel = node('label', 'search-field', 'Search mods');
     const search = node('input');
     search.type = 'search';
+    search.dataset.focusKey = 'catalog:search';
     search.placeholder = 'Search by name, creator or feature';
     search.value = query;
     searchLabel.append(search);
     const categoryLabel = node('label', '', 'Category');
     const select = node('select');
+    select.dataset.focusKey = 'catalog:category';
     const all = node('option', '', 'All categories');
     all.value = '';
     select.append(all);
-    for (const value of [...new Set(model.listings().filter(entry => entry.status === 'published').map(entry => entry.category))].sort()) {
+    const available = view === 'library' ? model.libraryEntries() : model.search();
+    for (const value of [...new Set(available.map(entry => entry.category))].sort()) {
       const option = node('option', '', value);
       option.value = value;
       select.append(option);
@@ -201,7 +226,7 @@
   function renderCatalog(focusSelection = false) {
     const region = document.getElementById('catalog-results');
     if (!region) return;
-    const entries = model.search(query, category, view === 'library');
+    const entries = view === 'library' ? model.libraryEntries(query, category) : model.search(query, category);
     if (!entries.some(entry => entry.id === selectedId)) selectedId = entries[0]?.id ?? null;
     const summary = node('div', 'results-label');
     summary.append(node('span', '', `${entries.length} ${entries.length === 1 ? 'mod' : 'mods'}${view === 'library' ? ' in your demo library' : ' to explore'}`), node('span', '', 'Synthetic examples · All free'));
@@ -211,12 +236,13 @@
     for (const entry of entries) {
       const card = node('article', 'listing');
       if (entry.id === selectedId) card.dataset.selected = '';
-      const control = button('', () => { selectedId = entry.id; renderCatalog(true); });
+      const control = button('', () => { selectedId = entry.id; renderCatalog(true); }, '', `catalog:entry:${entry.id}`);
       control.setAttribute('aria-label', `View ${entry.title}`);
       control.setAttribute('aria-pressed', String(entry.id === selectedId));
       control.dataset.listing = entry.id;
       const meta = node('div', 'listing-meta');
       meta.append(node('span', '', entry.category), node('strong', '', model.library().includes(entry.id) ? 'In demo library' : 'Free'));
+      if (entry.status !== 'published') meta.append(node('span', '', label(entry.status)));
       control.append(icon(entry.icon, entry.tone), node('h2', '', entry.title), node('p', 'byline', entry.creator), node('p', 'summary', entry.summary), meta);
       card.append(control);
       list.append(card);
@@ -243,6 +269,7 @@
     const wrapper = node('label', multiline ? 'wide' : '', text);
     const input = node(multiline ? 'textarea' : 'input');
     input.name = name;
+    input.dataset.focusKey = `${view}:field:${name}`;
     input.value = value;
     input.required = required;
     wrapper.append(input);
@@ -254,13 +281,13 @@
     const heading = node('div', 'section-heading');
     const copy = node('div');
     copy.append(node('h2', '', 'Creator workspace'), node('p', '', 'Prepare a free mod listing, declare its permissions, and submit it for demo review.'));
-    heading.append(copy, button('New submission', () => { editingId = null; render(); }));
+    heading.append(copy, button('New submission', () => { editingId = null; render(); }, '', 'creator:new'));
     const desk = node('div', 'desk');
     const own = model.listings().filter(entry => entry.owner === model.actor.id);
     const list = node('ul', 'desk-list');
     for (const entry of own) {
       const row = node('li');
-      const control = button(entry.title, () => { editingId = entry.id; render(); });
+      const control = button(entry.title, () => { editingId = entry.id; render(); }, '', `creator:entry:${entry.id}`);
       control.setAttribute('aria-pressed', String(editingId === entry.id));
       control.append(node('span', '', label(entry.status)));
       row.append(control);
@@ -291,10 +318,12 @@
     const actions = node('div', 'form-actions');
     const save = node('button', '', 'Save draft');
     save.type = 'submit';
+    save.dataset.focusKey = 'creator:save';
     actions.append(save);
     const submit = node('button', 'primary', 'Submit for demo review');
     submit.type = 'submit';
     submit.name = 'send-review';
+    submit.dataset.focusKey = 'creator:submit';
     actions.append(submit);
     form.append(grid, node('p', 'hint', 'Listing text only. No mod files are uploaded. All entries in this proof of concept are free.'), actions);
     form.addEventListener('submit', event => {
@@ -333,7 +362,7 @@
     const list = node('ul', 'desk-list');
     for (const entry of entries) {
       const row = node('li');
-      const control = button(entry.title, () => { reviewId = entry.id; render(); });
+      const control = button(entry.title, () => { reviewId = entry.id; render(); }, '', `review:entry:${entry.id}`);
       control.setAttribute('aria-pressed', String(reviewId === entry.id));
       control.append(node('span', '', `${label(entry.status)} · ${entry.creator}`));
       row.append(control);
@@ -350,6 +379,7 @@
       const control = node('button', rule.action === 'approve' ? 'primary' : '', label(rule.action));
       control.type = 'submit';
       control.value = rule.action;
+      control.dataset.focusKey = `review:action:${entry.id}:${rule.action}`;
       control.addEventListener('click', () => { reason.input.required = rule.requires_reason; });
       actions.append(control);
     }
@@ -380,6 +410,7 @@
     account.input.placeholder = 'e.g. reviewer-example';
     const roleLabel = node('label', 'wide', 'Assignment');
     const role = node('select');
+    role.dataset.focusKey = 'staff:field:assignment';
     for (const value of model.roles.filter(value => model.can('staff.manage') && (modelRoleCan(value, 'submission.review') || modelRoleCan(value, 'staff.manage')))) {
       const option = node('option', '', `${label(value)} (demo)`);
       option.value = value;
@@ -394,6 +425,7 @@
     const actions = node('div', 'form-actions');
     const submit = node('button', 'primary', 'Save demo assignment');
     submit.type = 'submit';
+    submit.dataset.focusKey = 'staff:save';
     actions.append(submit);
     form.append(grid, actions);
     form.addEventListener('submit', event => {
@@ -407,7 +439,7 @@
       const row = node('div', 'staff-row');
       const name = node('div', '', member.id);
       name.append(node('span', '', `${label(member.role)} · simulated`));
-      row.append(name, button('Edit assignment', () => { account.input.value = member.id; role.value = member.role; reason.input.focus(); }));
+      row.append(name, button('Edit assignment', () => { account.input.value = member.id; role.value = member.role; reason.input.focus(); }, '', `staff:edit:${member.id}`));
       rows.append(row);
     }
     if (!model.staff().length) rows.append(node('p', 'muted small', 'No local assignments yet. Add a demo account to try the workflow.'));

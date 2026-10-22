@@ -126,7 +126,7 @@ class RenderTests(unittest.TestCase):
                          f'https://github.com/{self.config["repository"]}/releases/download/nightly/')
         self.assertEqual(config["nightly_install_command"], config["install_command"] + " -s -- --channel nightly")
         self.assertEqual({path.name for path in self.output.iterdir()}, {
-            "index.html", "downloads.js", "app.js", "presence.js", "history.js", "title.png", "texture.svg", "marketplace",
+            "index.html", "site.css", "downloads.js", "app.js", "presence.js", "history.js", "title.png", "texture.svg", "marketplace",
         })
         self.assertFalse((self.output / self.config["install_script"]).exists())
 
@@ -181,6 +181,32 @@ class RenderTests(unittest.TestCase):
         self.assertTrue(any(tag == "a" and attrs.get("href") == "/marketplace/"
                             and any(parent == "header" for parent, _ in ancestors)
                             for tag, attrs, ancestors in landing.elements))
+
+    def test_routes_share_branding_and_resolve_their_stylesheets(self):
+        """Keep both routes on the same header, artwork and generated stylesheet."""
+        (self.repository / RENDER.INPUTS["discord_mark"]).write_text("M0 0L2 2Z\n")
+        RENDER.build(self.repository, self.output)
+        headers = []
+        for route in ("index.html", "marketplace/index.html"):
+            html = (self.output / route).read_text()
+            self.assertNotIn("@@", html)
+            page = Page()
+            page.feed(html)
+            styles = [attrs["href"] for tag, attrs, _ in page.elements
+                      if tag == "link" and attrs.get("rel") == "stylesheet"]
+            self.assertIn("/site.css", styles)
+            for stylesheet in styles:
+                self.assertTrue((self.output / stylesheet.lstrip("/")).is_file())
+            header = [(tag, {key: value for key, value in attrs.items() if key != "aria-current"})
+                      for tag, attrs, ancestors in page.elements
+                      if any(parent == "header" for parent, _ in ancestors)]
+            headers.append(header)
+            self.assertEqual(page.repository, "https://github.com/" + self.config["repository"])
+            self.assertIn('<path d="M0 0L2 2Z"', html)
+            self.assertTrue(any(tag == "img" and attrs.get("src") == "/title.png"
+                                for tag, attrs, _ in page.elements))
+        self.assertEqual(*headers)
+        self.assertNotIn("@@", (self.output / "site.css").read_text())
 
 
 if __name__ == "__main__":

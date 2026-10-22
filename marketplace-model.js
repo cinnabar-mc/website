@@ -258,6 +258,19 @@
       return reason.trim();
     }
 
+    /** Filters discovery or selected library content by the same text and category fields. */
+    function search(query, category, libraryOnly, includeUnavailable = false) {
+      const words = typeof query === "string" ? query.trim().toLowerCase().split(/\s+/).filter(Boolean) : [];
+      const selected = libraryOnly ? library() : null;
+      return listings().filter(function (entry) {
+        const haystack = [entry.title, entry.creator, entry.category, entry.summary, entry.description,
+          ...(entry.permissions || [])].join(" ").toLowerCase();
+        return (entry.status === "published" || (selected && includeUnavailable))
+          && (!category || category === "all" || entry.category === category)
+          && (!selected || selected.includes(entry.id)) && words.every(function (word) { return haystack.includes(word); });
+      });
+    }
+
     restore(savedState);
     return {
       state: state,
@@ -352,14 +365,11 @@
       exportState: function () { return copy(state); },
       /** Searches published content, optionally within the current actor's library. */
       search: function (query, category, libraryOnly) {
-        const words = typeof query === "string" ? query.trim().toLowerCase().split(/\s+/).filter(Boolean) : [];
-        const selected = libraryOnly ? library() : null;
-        return listings().filter(function (entry) {
-          const haystack = [entry.title, entry.creator, entry.category, entry.summary, entry.description,
-            ...(entry.permissions || [])].join(" ").toLowerCase();
-          return entry.status === "published" && (!category || category === "all" || entry.category === category)
-            && (!selected || selected.includes(entry.id)) && words.every(function (word) { return haystack.includes(word); });
-        });
+        return search(query, category, libraryOnly);
+      },
+      /** Projects selected library entries, including unavailable selections that remain removable. */
+      libraryEntries: function (query, category) {
+        return search(query, category, true, true);
       }
     };
   }

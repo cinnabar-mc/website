@@ -34,17 +34,23 @@ def build(repository, output):
     config["online_history_url"] = api_origin.rstrip("/") + "/v1/presence/history"
     icon = (repository / INPUTS["icon"]).read_text()
     red = ET.fromstring(icon).find("{http://www.w3.org/2000/svg}rect").attrib["fill"]
+    header = (HERE / "site-header.html.in").read_text().strip()
     page = (HERE / "index.html.in").read_text()
+    page = page.replace("@@SITE_HEADER@@", header)
+    page = page.replace("@@MARKETPLACE_CURRENT@@", "")
     page = page.replace("@@DISCORD_MARK@@", (repository / INPUTS["discord_mark"]).read_text().strip())
-    page = page.replace("@@RED@@", red)
     page = page.replace("@@FAVICON@@", "data:image/svg+xml," + quote(icon, safe=""))
     page = page.replace("@@REPOSITORY_URL@@", repository_url)
     output.mkdir(parents=True, exist_ok=True)
     (output / "index.html").write_text(page)
+    (output / "site.css").write_text((HERE / "site.css").read_text().replace("@@RED@@", red))
     marketplace = output / "marketplace"
     marketplace.mkdir(parents=True, exist_ok=True)
     marketplace_page = (HERE / "marketplace.html.in").read_text()
-    marketplace_page = marketplace_page.replace("@@RED@@", red)
+    marketplace_page = marketplace_page.replace("@@SITE_HEADER@@", header)
+    marketplace_page = marketplace_page.replace("@@MARKETPLACE_CURRENT@@", ' aria-current="page"')
+    marketplace_page = marketplace_page.replace("@@DISCORD_MARK@@", (repository / INPUTS["discord_mark"]).read_text().strip())
+    marketplace_page = marketplace_page.replace("@@REPOSITORY_URL@@", repository_url)
     marketplace_page = marketplace_page.replace("@@FAVICON@@", "data:image/svg+xml," + quote(icon, safe=""))
     (marketplace / "index.html").write_text(marketplace_page)
     for asset in ("marketplace.css", "marketplace.js", "marketplace-model.js"):
