@@ -5,7 +5,6 @@
   const storageKey = 'cinnabar.marketplace.demo.v1';
   const workspace = document.getElementById('workspace');
   const feedback = document.getElementById('feedback');
-  const roleSelect = document.getElementById('demo-role');
   let model;
   let view = 'browse';
   let selectedId = null;
@@ -14,6 +13,8 @@
   let query = '';
   let category = '';
   let storageAvailable = true;
+  let accountSwitchOpen = false;
+  let preferencesOpen = false;
 
   /** Create text-bearing elements without interpreting catalog or form HTML. */
   function node(tag, className, text) {
@@ -126,18 +127,21 @@
 
   /** Derive visible workspaces from the shared capability policy. */
   function renderNavigation() {
-    const sections = [['browse', 'Explore'], ['library', `Demo library (${model.library().length})`]];
+    const sections = [['browse', 'Explore'], ['library', `My library (${model.library().length})`]];
     if (model.can('submission.create')) sections.push(['creator', 'Creator workspace']);
     if (model.can('submission.review')) sections.push(['review', 'Review queue']);
     if (model.can('staff.manage')) sections.push(['staff', 'Staff & audit']);
-    if (view !== 'signin' && !sections.some(([id]) => id === view)) view = 'browse';
+    if (view !== 'account' && !sections.some(([id]) => id === view)) view = 'browse';
     document.getElementById('workspace-nav').replaceChildren(...sections.map(([id, text]) => {
       const control = button(text, () => navigate(id), '', `nav:${id}`);
       if (id === view) control.setAttribute('aria-current', 'page');
       return control;
     }));
-    roleSelect.value = model.actor.role;
-    document.getElementById('role-indicator').textContent = `Local demo · ${label(model.actor.role)}`;
+    const actor = model.actor;
+    document.getElementById('account-name').textContent = actor.name;
+    document.getElementById('account-role').textContent = label(actor.role);
+    document.getElementById('account-avatar').textContent = initials(actor.name);
+    document.getElementById('account-link').disabled = false;
   }
 
   /** Render the current local workspace and role indicator. */
@@ -149,7 +153,7 @@
     else if (view === 'creator') renderCreator();
     else if (view === 'review') renderReview();
     else if (view === 'staff') renderStaff();
-    else renderSignIn();
+    else renderAccount();
     restoreFocus(focused);
   }
 
@@ -174,17 +178,17 @@
       item.append(icon('shield'), node('span', '', permission));
       list.append(item);
     }
-    permissions.append(list, node('p', 'hint', 'Sample declarations only. Mod execution and permission enforcement are not connected.'));
+    permissions.append(list);
     result.append(metadata, permissions);
     if (libraryAction) {
       const added = model.library().includes(entry.id);
-      if (entry.status !== 'published') result.append(node('p', 'notice', `${label(entry.status)} · This mod is unavailable. You can remove its saved selection from your demo library.`));
-      const control = button(added ? 'Remove from demo library' : 'Add to demo library', () => {
-        mutate(() => model.toggleLibrary(entry.id, Date.now()), added ? `${entry.title} removed from your demo library.` : `${entry.title} added to your demo library. No files were downloaded.`);
+      if (entry.status !== 'published') result.append(node('p', 'notice', `${label(entry.status)} · This mod is unavailable. You can remove its saved selection from your library.`));
+      const control = button(added ? 'Remove from library' : 'Add to library', () => {
+        mutate(() => model.toggleLibrary(entry.id, Date.now()), added ? `${entry.title} removed from your library.` : `${entry.title} added to your library.`);
         const replacement = workspace.querySelector('.detail button') || workspace.querySelector('[data-focus-key="catalog:recovery"]');
         if (replacement) replacement.focus();
       }, added ? '' : 'primary', `catalog:library:${entry.id}`);
-      result.append(control, node('p', 'hint', 'Saved in this browser only. Nothing is downloaded or installed.'));
+      result.append(control, node('p', 'hint', 'Adding to your library does not install a mod or grant its requested permissions.'));
     }
     return result;
   }
@@ -230,7 +234,7 @@
     const entries = view === 'library' ? model.libraryEntries(query, category) : model.search(query, category);
     if (!entries.some(entry => entry.id === selectedId)) selectedId = entries[0]?.id ?? null;
     const summary = node('div', 'results-label');
-    summary.append(node('span', '', `${entries.length} ${entries.length === 1 ? 'mod' : 'mods'}${view === 'library' ? ' in your demo library' : ' to explore'}`), node('span', '', 'Synthetic examples · All free'));
+    summary.append(node('span', '', `${entries.length} ${entries.length === 1 ? 'mod' : 'mods'}${view === 'library' ? ' in your library' : ' to explore'}`), node('span', '', 'All mods are free'));
     const layout = node('div', 'storefront');
     const list = node('div', 'catalog-list');
     let selectedCard;
@@ -242,7 +246,7 @@
       control.setAttribute('aria-pressed', String(entry.id === selectedId));
       control.dataset.listing = entry.id;
       const meta = node('div', 'listing-meta');
-      meta.append(node('span', '', entry.category), node('strong', '', model.library().includes(entry.id) ? 'In demo library' : 'Free'));
+      meta.append(node('span', '', entry.category), node('strong', '', model.library().includes(entry.id) ? 'In library' : 'Free'));
       if (entry.status !== 'published') meta.append(node('span', '', label(entry.status)));
       control.append(icon(entry.icon, entry.tone), node('h2', '', entry.title), node('p', 'byline', entry.creator), node('p', 'summary', entry.summary), meta);
       card.append(control);
@@ -256,7 +260,7 @@
       else layout.append(selected);
     } else {
       const hasFilter = query || category;
-      layout.append(empty(hasFilter ? 'No matching mods' : 'Your demo library is empty', hasFilter ? 'Try another search or category to find a sample mod.' : 'Explore the sample catalog, read the requested permissions, and add a mod here.', hasFilter ? 'Clear filters' : 'Explore mods', () => {
+      layout.append(empty(hasFilter ? 'No matching mods' : 'Your library is empty', hasFilter ? 'Try another search or category.' : 'Find a mod you like and add it to your library.', hasFilter ? 'Clear filters' : 'Explore mods', () => {
         if (hasFilter) { query = ''; category = ''; render(); }
         else navigate('browse');
       }));
@@ -282,7 +286,7 @@
   function renderCreator() {
     const heading = node('div', 'section-heading');
     const copy = node('div');
-    copy.append(node('h2', '', 'Creator workspace'), node('p', '', 'Prepare a free mod listing, declare its permissions, and submit it for demo review.'));
+    copy.append(node('h2', '', 'Creator workspace'), node('p', '', 'Prepare a free mod listing, declare its permissions, and submit it for review.'));
     heading.append(copy, button('New submission', () => { editingId = null; render(); }, '', 'creator:new'));
     const desk = node('div', 'desk');
     const own = model.listings().filter(entry => entry.owner === model.actor.id);
@@ -299,7 +303,7 @@
     desk.append(list);
     if (selected && !['draft', 'changes_requested'].includes(selected.status)) {
       const panel = detail(selected, false);
-      panel.append(node('p', 'notice', selected.status === 'pending' ? 'This submission is awaiting review. Try the local moderator role to continue.' : 'This entry is read-only. Create a new submission to try the publishing workflow.'));
+      panel.append(node('p', 'notice', selected.status === 'pending' ? 'Your submission is awaiting review.' : 'This listing is read-only. Create a new submission to share another mod.'));
       desk.append(panel);
     } else desk.append(submissionForm(selected));
     workspace.append(heading, desk);
@@ -322,12 +326,12 @@
     save.type = 'submit';
     save.dataset.focusKey = 'creator:save';
     actions.append(save);
-    const submit = node('button', 'primary', 'Submit for demo review');
+    const submit = node('button', 'primary', 'Submit for review');
     submit.type = 'submit';
     submit.name = 'send-review';
     submit.dataset.focusKey = 'creator:submit';
     actions.append(submit);
-    form.append(grid, node('p', 'hint', 'Listing text only. No mod files are uploaded. All entries in this proof of concept are free.'), actions);
+    form.append(grid, actions);
     form.addEventListener('submit', event => {
       event.preventDefault();
       const fields = Object.fromEntries(Object.entries(controls).map(([name, input]) => [name, input.value]));
@@ -337,7 +341,7 @@
         const saved = model.saveSubmission(fields, Date.now(), entry?.id);
         editingId = saved.id;
         if (send) model.transition(saved.id, 'submit', '', Date.now());
-      }, send ? 'Submitted for local demo review. Nothing was published to a server.' : 'Draft saved in this browser.');
+      }, send ? 'Submitted for review.' : 'Draft saved.');
     });
     if (entry) {
       const relevant = model.audit().filter(item => item.target === entry.id || String(item.target) === String(entry.id));
@@ -357,7 +361,7 @@
       .sort((left, right) => Number(right.status === 'pending') - Number(left.status === 'pending'));
     if (!entries.some(entry => entry.id === reviewId)) reviewId = entries[0]?.id ?? null;
     if (!entries.length) {
-      workspace.append(empty('No entries to review', 'Use the local creator role to save and submit a listing, then return here as a moderator.'));
+      workspace.append(empty('No entries to review', 'New submissions will appear here when they are ready for review.'));
       return;
     }
     const desk = node('div', 'desk');
@@ -385,11 +389,11 @@
       control.addEventListener('click', () => { reason.input.required = rule.requires_reason; });
       actions.append(control);
     }
-    form.append(reason.wrapper, node('p', 'hint', 'Your decision and reason are recorded in the local demo audit.'), actions);
+    form.append(reason.wrapper, node('p', 'hint', 'Your decision and reason will appear in the audit log.'), actions);
     form.addEventListener('submit', event => {
       event.preventDefault();
       const action = event.submitter.value;
-      mutate(() => model.transition(entry.id, action, reason.input.value, Date.now()), `${label(action)} recorded for ${entry.title} in this browser.`);
+      mutate(() => model.transition(entry.id, action, reason.input.value, Date.now()), `${label(action)} recorded for ${entry.title}.`);
     });
     panel.append(form);
     desk.append(list, panel);
@@ -400,21 +404,21 @@
   function renderStaff() {
     const heading = node('div', 'section-heading');
     const copy = node('div');
-    copy.append(node('h2', '', 'Demo staff & audit'), node('p', '', 'Assign or remove simulated staff roles and record the reason for each change.'));
+    copy.append(node('h2', '', 'Staff & audit'), node('p', '', 'Manage staff assignments and review account activity.'));
     heading.append(copy);
-    workspace.append(heading, node('p', 'notice', 'These records are local examples, not real access control. Demo role switching remains available to everyone.'));
+    workspace.append(heading);
     const layout = node('div', 'staff-layout');
     const form = node('form', 'editor');
-    form.append(node('h3', '', 'Change a demo staff role'));
+    form.append(node('h3', '', 'Change a staff assignment'));
     const grid = node('div', 'form-grid');
-    const account = field('Demo account ID', 'account', '', false);
+    const account = field('Account ID', 'account', '', false);
     account.wrapper.classList.add('wide');
-    account.input.placeholder = 'e.g. reviewer-example';
+    account.input.placeholder = 'Gamertag or account ID';
     const roleLabel = node('label', 'wide', 'Assignment');
     const role = node('select');
     role.dataset.focusKey = 'staff:field:assignment';
     for (const value of model.roles.filter(value => model.can('staff.manage') && (modelRoleCan(value, 'submission.review') || modelRoleCan(value, 'staff.manage')))) {
-      const option = node('option', '', `${label(value)} (demo)`);
+      const option = node('option', '', label(value));
       option.value = value;
       role.append(option);
     }
@@ -425,26 +429,26 @@
     const reason = field('Reason', 'reason', '', true);
     grid.append(account.wrapper, roleLabel, reason.wrapper);
     const actions = node('div', 'form-actions');
-    const submit = node('button', 'primary', 'Save demo assignment');
+    const submit = node('button', 'primary', 'Save assignment');
     submit.type = 'submit';
     submit.dataset.focusKey = 'staff:save';
     actions.append(submit);
     form.append(grid, actions);
     form.addEventListener('submit', event => {
       event.preventDefault();
-      mutate(() => model.manageStaff(account.input.value, role.value || null, reason.input.value, Date.now()), 'Demo staff assignment updated. No real account permissions changed.');
+      mutate(() => model.manageStaff(accountId(account.input.value), role.value || null, reason.input.value, Date.now()), 'Staff assignment saved.');
     });
     const staff = node('div');
-    staff.append(node('h3', '', 'Local staff assignments'));
+    staff.append(node('h3', '', 'Staff members'));
     const rows = node('div', 'staff-list');
     for (const member of model.staff()) {
       const row = node('div', 'staff-row');
-      const name = node('div', '', member.id);
-      name.append(node('span', '', `${label(member.role)} · simulated`));
-      row.append(name, button('Edit assignment', () => { account.input.value = member.id; role.value = member.role; reason.input.focus(); }, '', `staff:edit:${member.id}`));
+      const name = node('div', '', accountName(member.id));
+      name.append(node('span', '', label(member.role)));
+      row.append(name, button('Edit assignment', () => { account.input.value = model.account(member.id)?.gamertag || member.id; role.value = member.role; reason.input.focus(); }, '', `staff:edit:${member.id}`));
       rows.append(row);
     }
-    if (!model.staff().length) rows.append(node('p', 'muted small', 'No local assignments yet. Add a demo account to try the workflow.'));
+    if (!model.staff().length) rows.append(node('p', 'muted small', 'No staff assigned. Enter an account ID to add a staff member.'));
     staff.append(rows);
     layout.append(form, staff);
     workspace.append(layout, auditLog(model.audit()));
@@ -457,15 +461,15 @@
   }
 
   /** Show the reason and actor for every local workflow decision. */
-  function auditLog(entries) {
+  function auditLog(entries, title = 'Audit log', emptyMessage = 'No changes recorded yet. Decisions and reasons will appear here.') {
     const section = node('section', 'audit');
-    section.append(node('h3', '', 'Local demo audit'));
-    if (!entries.length) section.append(node('p', 'muted small', 'No changes recorded yet. Decisions and reasons will appear here.'));
+    section.append(node('h3', '', title));
+    if (!entries.length) section.append(node('p', 'muted small', emptyMessage));
     const list = node('ol');
     for (const item of [...entries].reverse()) {
       const row = node('li');
-      row.append(node('strong', '', `${label(item.action)} · ${item.target}`));
-      row.append(node('p', '', `By ${item.actorId}${item.reason ? ` · ${item.reason}` : ''}`));
+      row.append(node('strong', '', `${label(item.action.replaceAll('.', ' '))} · ${accountName(item.target)}`));
+      row.append(node('p', '', `By ${accountName(item.actorId)}${item.reason ? ` · ${item.reason}` : ''}`));
       const previous = item.previousStatus ?? item.previousRole;
       const next = item.newStatus ?? item.newRole;
       if (previous !== null || next !== null) row.append(node('p', '', `${previous ?? 'None'} → ${next ?? 'None'}`));
@@ -478,34 +482,85 @@
     return section;
   }
 
-  /** Explain the actual sign-in prerequisites without starting a pretend OAuth flow. */
-  function renderSignIn() {
-    const section = node('section', 'signin');
-    section.append(node('h2', '', 'Microsoft sign-in setup'), node('p', '', 'Real sign-in is not available in this proof of concept. No Microsoft account is connected, and this page does not request credentials.'));
-    const steps = node('ol');
-    for (const text of ['Register the production application and its exact return URLs with Microsoft.', 'Connect an authoritative backend for secure sessions, verified Xbox access where required, and account permissions.', 'Implement and validate account linking, consent, sign-out, and recovery before enabling sign-in.']) steps.append(node('li', '', text));
-    const disabled = button('Microsoft sign-in unavailable', () => {}, 'primary');
-    disabled.disabled = true;
-    section.append(steps, disabled, node('p', 'hint', 'You can explore with local demo roles. Switching roles does not authenticate you.'));
+  /** Resolve known profiles and listings without exposing internal account identifiers. */
+  function accountName(id) {
+    return model.account(id)?.name || model.listings().find(entry => entry.id === id)?.title || String(id);
+  }
+
+  /** Resolve a known gamertag or profile name to its stable account identifier. */
+  function accountId(value) {
+    const normalized = value.trim().toLowerCase();
+    return model.accounts().find(account => [account.id, account.name, account.gamertag]
+      .some(name => name?.toLowerCase() === normalized))?.id || value;
+  }
+
+  /** Derive a compact avatar from the shared profile name. */
+  function initials(name) {
+    return name.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
+  }
+
+  /** Show the signed-in profile with secondary account switching and preferences. */
+  function renderAccount() {
+    const actor = model.actor;
+    const section = node('section', 'account-page');
+    const heading = node('div', 'section-heading');
+    heading.append(node('h2', '', 'Account'));
+    const layout = node('div', 'account-layout');
+    const profile = node('section', 'profile');
+    const identity = node('div', 'profile-identity');
+    const avatar = node('span', 'avatar profile-avatar', initials(actor.name));
+    avatar.setAttribute('aria-hidden', 'true');
+    const name = node('div');
+    name.append(node('h3', '', actor.name), node('p', 'muted', label(actor.role)));
+    identity.append(avatar, name);
+    const metadata = node('dl', 'profile-metadata');
+    for (const [term, value] of [['Gamertag', actor.gamertag || actor.name], ['Account provider', 'Microsoft']]) {
+      const group = node('div');
+      group.append(node('dt', '', term), node('dd', '', value));
+      metadata.append(group);
+    }
+    profile.append(identity, metadata, button('View my library', () => navigate('library'), '', 'account:library'));
+    const preferences = node('div', 'account-preferences');
+    const switching = node('details', 'account-switcher');
+    switching.open = accountSwitchOpen;
+    switching.addEventListener('toggle', () => { accountSwitchOpen = switching.open; });
+    switching.append(node('summary', '', 'Switch account'));
+    const choices = node('div', 'account-choices');
+    for (const account of model.accounts()) {
+      const control = button('', () => {
+        accountSwitchOpen = true;
+        selectedId = editingId = reviewId = null;
+        mutate(() => model.setAccount(account.id), `Switched to ${account.name}.`);
+      }, 'account-choice', `account:switch:${account.id}`);
+      control.setAttribute('aria-pressed', String(account.id === actor.id));
+      const avatar = node('span', 'avatar', initials(account.name));
+      avatar.setAttribute('aria-hidden', 'true');
+      const description = node('span', 'account-summary');
+      description.append(node('strong', '', account.name), node('span', '', label(account.role)));
+      control.append(avatar, description);
+      choices.append(control);
+    }
+    switching.append(choices);
+    const reset = node('details', 'account-reset');
+    reset.open = preferencesOpen;
+    reset.addEventListener('toggle', () => { preferencesOpen = reset.open; });
+    reset.append(node('summary', '', 'Preferences'), node('p', 'hint', 'Clear your saved library, submissions, and activity to start over.'));
+    reset.append(button('Reset saved data', () => {
+      preferencesOpen = true;
+      model = window.CinnabarMarketplace.createModel(catalog);
+      selectedId = editingId = reviewId = null;
+      query = category = '';
+      persist();
+      render();
+      announce('Saved data reset.');
+    }, 'danger', 'account:reset'));
+    preferences.append(switching, reset);
+    layout.append(profile, preferences);
+    section.append(heading, layout, auditLog(model.audit().filter(item => item.actorId === actor.id), 'Activity', 'Your saved mods and submissions will appear here.'));
     workspace.append(section);
   }
 
-  document.getElementById('demo-toggle').addEventListener('click', event => {
-    const panel = document.getElementById('demo-controls');
-    panel.hidden = !panel.hidden;
-    event.currentTarget.setAttribute('aria-expanded', String(!panel.hidden));
-  });
-  document.getElementById('signin-link').addEventListener('click', () => { if (model) navigate('signin'); });
-  roleSelect.addEventListener('change', () => mutate(() => model.setRole(roleSelect.value), `Local ${label(roleSelect.value)} role selected. No real permissions changed.`));
-  document.getElementById('reset-demo').addEventListener('click', () => {
-    model = window.CinnabarMarketplace.createModel(catalog);
-    selectedId = editingId = reviewId = null;
-    view = 'browse';
-    query = category = '';
-    persist();
-    render();
-    announce('Local demo reset. The sample catalog has been restored.');
-  });
+  document.getElementById('account-link').addEventListener('click', () => { if (model) navigate('account'); });
   matchMedia('(max-width: 720px)').addEventListener('change', () => { if (model && ['browse', 'library'].includes(view)) renderCatalog(); });
 
   /** Load the generated shared fixture, with an honest recoverable failure state. */
@@ -518,16 +573,11 @@
       try { saved = JSON.parse(localStorage.getItem(storageKey) || 'null'); }
       catch { storageAvailable = false; }
       model = window.CinnabarMarketplace.createModel(catalog, saved);
-      for (const role of model.roles) {
-        const option = node('option', '', label(role));
-        option.value = role;
-        roleSelect.append(option);
-      }
       render();
-      if (!storageAvailable) announce('Browser storage is unavailable. You can still try the demo for this page session.');
+      if (!storageAvailable) announce('Your changes cannot be saved on this device. You can continue for this session.');
     } catch {
-      workspace.replaceChildren(empty('The sample catalog could not load', 'Reload the page to try again. No account or library data was sent.', 'Reload page', () => location.reload()));
-      document.getElementById('demo-toggle').disabled = true;
+      workspace.replaceChildren(empty('The catalog could not load', 'Reload the page to try again.', 'Reload page', () => location.reload()));
+      document.getElementById('account-link').disabled = true;
     }
   }
 

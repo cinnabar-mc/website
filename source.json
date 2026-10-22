@@ -1,7 +1,7 @@
 {
   "repository": "cinnabar-mc/cinnabar",
   "branch": "dev",
-  "revision": "cc55dd52c3e0ea978b7a9b739522c663fa73e81d",
+  "revision": "630024ff5444de638167a3615094006fecf14833",
   "inputs": {
     "release_manifest": "packaging/release-assets.json",
     "api_contract": "crates/bridge/data/contract.json",

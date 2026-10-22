@@ -25,15 +25,24 @@ To render against another local client checkout, use `python3 render.py --source
 ## Marketplace proof of concept
 
 `/marketplace/` adds a free community mod storefront with search, category filters,
-listing permissions, and a browser demo library. Expand **Try another role** to
-try creator submissions, moderation decisions, and staff assignments with a local
-audit trail. The sample catalog is synthetic; state stays in browser storage.
-Reset demo data restores the examples. There are no downloads, uploads, real
-accounts, or server-side permission grants. Microsoft sign-in has an explicit
-setup view and remains disabled.
+listing permissions, and My library. It opens as a fictional signed-in player.
+**Account → Switch account** offers the shared player, creator, moderator, and
+administrator profiles. Creators can save and submit listing text; moderators
+record review decisions; administrators manage staff assignments. Known profile
+names appear in the roster and audit log. Fresh state derives its initial roster
+from review/staff capabilities in the shared catalog; saved roster changes survive
+reloads. **Account → Preferences → Reset saved data** restores the starting state.
+
+The catalog and Microsoft/game-account profiles are fictional scenarios. State
+stays in browser storage, with existing account IDs and saved changes retained.
+There is no real authentication, backend session, upload, download, installation,
+server publishing, or permission grant. Profile metadata never authorizes actions;
+capabilities and transitions come from the shared role policy. Adding to a library
+records a selection only. Production Microsoft registration and backend work
+remain pending. These scope notes belong here rather than in product banners.
 
 `source.json` declares the client's `crates/launcher/data/marketplace-demo.json`;
-the renderer copies it unchanged to `dist/marketplace/catalog.json`. Roles,
+the renderer copies it unchanged to `dist/marketplace/catalog.json`. Account profiles, roles,
 capabilities, review transitions, and reason requirements come from that file.
 Run the normal build/test commands above, then preview with
 `python3 -m http.server 8000 --directory dist` and open `/marketplace/`.

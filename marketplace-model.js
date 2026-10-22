@@ -50,7 +50,7 @@
     if (fields.price !== undefined && fields.price !== 0
       && !(typeof fields.price === "string" && (fields.price.trim().toLowerCase() === "free"
         || (fields.price.trim() !== "" && Number(fields.price) === 0)))) {
-      throw new Error("Demo submissions must be free.");
+      throw new Error("Submissions must be free.");
     }
     const result = {};
     textFields.forEach(function (key) { result[key] = text(fields[key], key); });
@@ -72,6 +72,7 @@
     }
     const source = copy(catalog);
     const roles = Object.keys(source.roles);
+    const accounts = object(source.accounts) ? source.accounts : {};
     const byId = new Map();
     source.listings.forEach(function (entry) {
       if (!object(entry) || !Number.isSafeInteger(entry.id) || entry.id < 0 || byId.has(entry.id)
@@ -95,10 +96,13 @@
     const state = {
       schemaVersion: 1,
       actorRole: roles.includes("player") ? "player" : roles[0],
+      actorId: null,
       submissions: [],
       listingEdits: {},
       libraries: {},
-      staff: [],
+      staff: Object.entries(accounts).filter(function ([, profile]) {
+        return staffRoles.includes(profile.role);
+      }).map(function ([id, profile]) { return { id: id, role: profile.role, updatedAt: 0 }; }),
       audit: []
     };
 
@@ -107,10 +111,19 @@
       return typeof role === "string" && Object.hasOwn(source.roles, role);
     }
 
-    /** Derives each role's distinct demo identity without storing a second permission table. */
-    function identity(role) {
+    /** Resolves display metadata from the shared catalog without granting capabilities. */
+    function account(id) {
+      return typeof id === "string" && Object.hasOwn(accounts, id) ? Object.assign({ id: id }, copy(accounts[id])) : null;
+    }
+
+    /** Keeps legacy role identities stable while allowing multiple accounts with the same role. */
+    function identity(role, id = state.actorId) {
       if (!knownRole(role)) throw new Error("Unknown marketplace role: " + String(role) + ".");
-      return { id: role + "-demo", role: role, name: role.charAt(0).toUpperCase() + role.slice(1) + " demo" };
+      const selected = account(id);
+      const profile = selected && selected.role === role ? selected : account(role + "-demo")
+        || Object.keys(accounts).map(account).find(function (entry) { return entry.role === role; });
+      return profile && profile.role === role ? Object.assign({}, profile, { role: role })
+        : { id: role + "-demo", role: role, name: role.charAt(0).toUpperCase() + role.slice(1) };
     }
 
     /** Checks the active role using the shared catalog permission policy. */
@@ -139,6 +152,8 @@
       catch (_) { return; }
       if (!object(saved) || (saved.schemaVersion !== undefined && saved.schemaVersion !== state.schemaVersion)) return;
       if (knownRole(saved.actorRole)) state.actorRole = saved.actorRole;
+      const selected = account(saved.actorId);
+      if (selected && selected.role === state.actorRole) state.actorId = selected.id;
       if (Array.isArray(saved.submissions)) saved.submissions.forEach(function (entry) {
         if (!object(entry) || !Number.isSafeInteger(entry.id) || entry.id < 1000 || byId.has(entry.id)
           || state.submissions.some(function (existing) { return existing.id === entry.id; })
@@ -170,20 +185,24 @@
         }
         if (Object.keys(result).length) state.listingEdits[id] = result;
       });
-      if (object(saved.libraries)) roles.forEach(function (role) {
-        const id = identity(role).id;
+      if (object(saved.libraries)) [...new Set(Object.keys(accounts).concat(roles.map(function (role) {
+        return identity(role, null).id;
+      })))].forEach(function (id) {
         if (Array.isArray(saved.libraries[id])) state.libraries[id] = [...new Set(saved.libraries[id].filter(function (listingId) {
           return byId.has(listingId) || state.submissions.some(function (entry) { return entry.id === listingId; });
         }))];
       });
-      if (Array.isArray(saved.staff)) saved.staff.forEach(function (member) {
-        if (!object(member) || typeof member.id !== "string" || !member.id.trim() || !staffRoles.includes(member.role)
-          || !validTime(member.updatedAt) || state.staff.some(function (existing) { return existing.id === member.id.trim(); })) return;
-        state.staff.push({ id: member.id.trim(), role: member.role, updatedAt: member.updatedAt });
-      });
+      if (Array.isArray(saved.staff)) {
+        state.staff = [];
+        saved.staff.forEach(function (member) {
+          if (!object(member) || typeof member.id !== "string" || !member.id.trim() || !staffRoles.includes(member.role)
+            || !validTime(member.updatedAt) || state.staff.some(function (existing) { return existing.id === member.id.trim(); })) return;
+          state.staff.push({ id: member.id.trim(), role: member.role, updatedAt: member.updatedAt });
+        });
+      }
       if (Array.isArray(saved.audit)) saved.audit.forEach(function (entry) {
         if (!object(entry) || !validTime(entry.at) || typeof entry.actorRole !== "string" || !entry.actorRole.trim()
-          || entry.actorId !== entry.actorRole + "-demo" || typeof entry.action !== "string" || !entry.action.trim()
+          || (entry.actorId !== entry.actorRole + "-demo" && account(entry.actorId)?.role !== entry.actorRole) || typeof entry.action !== "string" || !entry.action.trim()
           || !(typeof entry.target === "string" && entry.target.trim() || Number.isSafeInteger(entry.target))
           || typeof entry.reason !== "string"
           || ![entry.previousStatus, entry.newStatus].every(function (status) { return status === null || statuses.has(status); })
@@ -206,8 +225,7 @@
       });
       state.submissions.forEach(function (entry) {
         const template = source.listings.find(function (base) { return base.category === entry.category; }) || source.listings[0] || {};
-        const role = roles.find(function (role) { return identity(role).id === entry.owner; });
-        entries.push(Object.assign({ slug: "submission-" + entry.id, creator: role ? identity(role).name : "Demo creator",
+        entries.push(Object.assign({ slug: "submission-" + entry.id, creator: account(entry.owner)?.name || "Community creator",
           tone: template.tone, icon: template.icon, price: 0 }, entry));
       });
       return copy(entries);
@@ -276,11 +294,23 @@
       state: state,
       roles: roles.slice(),
       get actor() { return identity(state.actorRole); },
+      /** Returns selectable profiles from the catalog's current supported roles. */
+      accounts: function () { return Object.keys(accounts).map(account).filter(function (entry) { return knownRole(entry.role); }); },
+      account: account,
       can: can,
+      /** Selects a catalog profile while retaining capability checks in the shared role policy. */
+      setAccount: function (id) {
+        const selected = account(id);
+        if (!selected || !knownRole(selected.role)) throw new Error("Unknown marketplace account.");
+        state.actorRole = selected.role;
+        state.actorId = selected.id;
+        return identity(state.actorRole);
+      },
       /** Switches demo identities only to roles defined by the current catalog. */
       setRole: function (role) {
-        identity(role);
+        const selected = identity(role, null);
         state.actorRole = role;
+        state.actorId = selected.id;
         return identity(role);
       },
       listings: listings,

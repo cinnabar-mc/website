@@ -94,9 +94,14 @@ class Element {
   addEventListener(type, callback) { this.listeners[type] = callback; }
   /** Only a connected, enabled focusable element can become the document's active element. */
   focus() {
-    const focusable = ['body', 'button', 'input', 'select', 'textarea', 'a'].includes(this.tagName)
+    const focusable = ['body', 'button', 'input', 'select', 'textarea', 'a', 'summary'].includes(this.tagName)
       || this.tabIndex !== undefined || this.getAttribute('tabindex') !== null;
-    if (this.isConnected && !this.disabled && focusable) this.ownerDocument.activeElement = this;
+    let visible = true;
+    for (let parent = this.parentNode; parent; parent = parent.parentNode) {
+      if (parent.hidden || (parent.tagName === 'details' && !parent.open
+        && !parent.children.find(child => child.tagName === 'summary')?.contains(this))) visible = false;
+    }
+    if (this.isConnected && !this.disabled && focusable && visible) this.ownerDocument.activeElement = this;
   }
   set textContent(value) { this.replaceChildren(); this.ownText = String(value); }
   get textContent() { return [this.ownText, ...this.children.map(child => child.textContent)].join(' '); }
@@ -181,12 +186,15 @@ function assertFocus(p, control) {
 async function page(source = catalog, {storage = new Map(), mobile = false} = {}) {
   const document = new Document();
   for (const [id, tag] of [
-    ['workspace', 'div'], ['feedback', 'p'], ['demo-role', 'select'], ['workspace-nav', 'nav'],
-    ['role-indicator', 'span'], ['demo-toggle', 'button'], ['demo-controls', 'div'],
-    ['signin-link', 'button'], ['reset-demo', 'button'],
+    ['workspace', 'div'], ['feedback', 'p'], ['workspace-nav', 'nav'],
+    ['account-link', 'button'], ['account-name', 'strong'], ['account-role', 'span'], ['account-avatar', 'span'],
   ]) {
     const control = document.createElement(tag);
     control.id = id;
+    if (id === 'account-link') {
+      control.setAttribute('aria-label', 'Account');
+      control.dataset.focusKey = 'nav:account';
+    }
     document.body.append(control);
   }
   const element = id => {
@@ -223,7 +231,7 @@ async function page(source = catalog, {storage = new Map(), mobile = false} = {}
     control.listeners.click?.({currentTarget: control, target: control, preventDefault() {}});
   };
   return {
-    document, element, model: roleModel, query, click,
+    document, element, get model() { return roleModel; }, query, click,
     /** Cross the responsive breakpoint and dispatch its actual change subscribers. */
     resize(nextMobile) {
       if (mobile === nextMobile) return;
@@ -258,10 +266,15 @@ async function page(source = catalog, {storage = new Map(), mobile = false} = {}
       form.listeners.submit({preventDefault() {}, submitter: control});
     },
     role(role) {
-      const select = element('demo-role');
-      select.focus();
-      select.value = role;
-      select.listeners.change({currentTarget: select});
+      const account = roleModel.accounts().find(account => account.id === role + '-demo')
+        || roleModel.accounts().find(account => account.role === role);
+      assert.ok(account, `shared profile exists for ${role}`);
+      click(element('account-link'));
+      const switcher = element('workspace').querySelector('.account-switcher');
+      switcher.open = true;
+      switcher.listeners.toggle();
+      click(document.querySelector(`[data-focus-key="account:switch:${account.id}"]`));
+      click(query('Explore'));
     },
     /** Decode the persisted demo record independently of the live model. */
     saved() {
@@ -324,18 +337,22 @@ test('review queue opens a pending submission before published listing managemen
   assert.ok(p.find('Request changes'));
 });
 
-test('library actions change local state and the sign-in view remains unavailable', async () => {
+test('library actions preserve focus and Account shows the shared signed-in profile', async () => {
   const p = await page();
-  p.click(p.find('Add to demo library'));
+  const actor = catalog.accounts[p.model.actor.id];
+  assert.equal(p.element('account-name').textContent, actor.name);
+  p.click(p.find('Add to library'));
   assert.equal(p.model.library().length, 1);
-  assert.match(p.element('feedback').textContent, /No files were downloaded/);
-  assertFocus(p, p.find('Remove from demo library'));
-  p.click(p.find('Remove from demo library'));
+  assertFocus(p, p.find('Remove from library'));
+  p.click(p.find('Remove from library'));
   assert.equal(p.model.library().length, 0);
-  assertFocus(p, p.find('Add to demo library'));
-  p.click(p.element('signin-link'));
-  assert.equal(p.find('Microsoft sign-in unavailable').disabled, true);
-  assert.match(p.element('workspace').textContent, /No Microsoft account is connected/);
+  assertFocus(p, p.find('Add to library'));
+  p.click(p.element('account-link'));
+  const profile = p.element('workspace').querySelector('.profile');
+  assert.ok(profile.textContent.includes(actor.name));
+  assert.ok(profile.textContent.includes(actor.gamertag));
+  assert.match(profile.textContent, /Microsoft/);
+  assert.equal(p.element('workspace').querySelectorAll('.account-choice').length, Object.keys(catalog.accounts).length);
 });
 
 test('review form reason requirements follow each catalog rule and audit shows the actor', async () => {
@@ -357,7 +374,7 @@ test('review form reason requirements follow each catalog rule and audit shows t
   assert.equal(p.model.audit().at(-1).action, approve.action);
   p.role('admin');
   p.click(p.find('Staff & audit'));
-  assert.match(p.element('workspace').textContent, /moderator-demo/);
+  assert.ok(p.element('workspace').textContent.includes(catalog.accounts['moderator-demo'].name));
   assert.match(p.element('workspace').textContent, /pending → published/);
 });
 
@@ -368,10 +385,10 @@ test('suspended selections remain counted, persisted and removable in the player
   assert.equal(p.model.actor.role, 'player');
   const playerId = p.model.actor.id;
   p.click(p.find(`View ${published.title}`));
-  p.click(p.find('Add to demo library'));
+  p.click(p.find('Add to library'));
   assert.deepEqual(p.model.library(), [published.id]);
   assert.deepEqual(p.saved().libraries[playerId], [published.id]);
-  assertFocus(p, p.find('Remove from demo library'));
+  assertFocus(p, p.find('Remove from library'));
 
   p.role('moderator');
   p.click(p.find('Review queue'));
@@ -387,12 +404,12 @@ test('suspended selections remain counted, persisted and removable in the player
   assert.equal(p.query(`View ${published.title}`), null, 'suspended listing is absent from discovery');
   assert.deepEqual(p.model.library(), [published.id]);
   assert.deepEqual(p.saved().libraries[playerId], [published.id]);
-  p.click(p.find('Demo library (1)'));
+  p.click(p.find('My library (1)'));
   assert.ok(p.find(`View ${published.title}`));
-  assert.match(p.element('workspace').querySelector('.results-label').textContent, /1 mod in your demo library/);
+  assert.match(p.element('workspace').querySelector('.results-label').textContent, /1 mod in your library/);
   assert.equal(p.element('workspace').querySelector('.detail .badge').textContent.trim(), 'Suspended');
-  assert.doesNotMatch(p.element('workspace').textContent, /Your demo library is empty/);
-  assert.ok(p.find('Remove from demo library'));
+  assert.doesNotMatch(p.element('workspace').textContent, /Your library is empty/);
+  assert.ok(p.find('Remove from library'));
   const search = p.field('Search mods');
   search.focus();
   search.value = published.title;
@@ -405,34 +422,34 @@ test('suspended selections remain counted, persisted and removable in the player
   category.listeners.change();
   assertFocus(p, category);
   assert.ok(p.find(`View ${published.title}`), 'library filters keep the selected unavailable listing');
-  assert.ok(p.find('Remove from demo library'));
+  assert.ok(p.find('Remove from library'));
 
   p = await p.reload();
   assert.equal(p.model.actor.role, 'player');
   assert.equal(p.query(`View ${published.title}`), null);
-  p.click(p.find('Demo library (1)'));
+  p.click(p.find('My library (1)'));
   assert.ok(p.find(`View ${published.title}`));
   assert.equal(p.element('workspace').querySelector('.detail .badge').textContent.trim(), 'Suspended');
-  const remove = p.find('Remove from demo library');
+  const remove = p.find('Remove from library');
   p.click(remove);
   assert.equal(remove.isConnected, false);
   assert.deepEqual(p.model.library(), []);
   assert.deepEqual(p.saved().libraries[playerId], []);
-  assert.ok(p.find('Demo library (0)'));
-  assert.match(p.element('workspace').textContent, /Your demo library is empty/);
+  assert.ok(p.find('My library (0)'));
+  assert.match(p.element('workspace').textContent, /Your library is empty/);
   assertFocus(p, p.find('Explore mods'));
 
   p = await p.reload();
-  p.click(p.find('Demo library (0)'));
+  p.click(p.find('My library (0)'));
   assert.deepEqual(p.model.library(), []);
-  assert.equal(p.query('Remove from demo library'), null);
-  assert.match(p.element('workspace').textContent, /Your demo library is empty/);
+  assert.equal(p.query('Remove from library'), null);
+  assert.match(p.element('workspace').textContent, /Your library is empty/);
 });
 
 test('workspace navigation restores focus to the same newly rendered navigation button', async () => {
   const p = await page();
   for (const [role, labels] of [
-    ['player', ['Demo library (0)', 'Explore']],
+    ['player', ['My library (0)', 'Explore']],
     ['creator', ['Creator workspace', 'Explore']],
     ['admin', ['Review queue', 'Staff & audit', 'Explore']],
   ]) {
@@ -516,10 +533,10 @@ test('submitting a creator draft hands focus to its selected read-only desk row'
   p.click(p.find('Creator workspace'));
   const title = 'Submission focus sample';
   fillSubmission(p, title);
-  const submit = p.find('Submit for demo review');
+  const submit = p.find('Submit for review');
   p.submit(submit);
   assert.equal(submit.isConnected, false);
-  assert.equal(p.query('Submit for demo review'), null);
+  assert.equal(p.query('Submit for review'), null);
   assert.equal(p.model.listings().find(entry => entry.title === title).status, 'pending');
   assert.match(p.row(title).textContent, /Pending/);
   assert.equal(p.row(title).getAttribute('aria-pressed'), 'true');
@@ -588,27 +605,27 @@ test('granting and removing a staff assignment keep focus on the submit control'
   const role = Object.keys(catalog.roles).find(role => catalog.roles[role].includes('submission.review'));
   assert.ok(role, 'the shared policy includes a review-capable staff role');
   const account = 'keyboard-reviewer';
-  p.field('Demo account ID').value = account;
+  p.field('Account ID').value = account;
   p.field('Assignment').value = role;
   p.field('Reason').value = 'Help review the local demo queue.';
-  const grant = p.find('Save demo assignment');
+  const grant = p.find('Save assignment');
   p.submit(grant);
   assert.equal(grant.isConnected, false);
   assert.equal(p.model.staff().find(member => member.id === account).role, role);
-  assertFocus(p, p.find('Save demo assignment'));
+  assertFocus(p, p.find('Save assignment'));
 
-  p.click(p.find('Edit assignment'));
+  p.click(p.find('Edit assignment', 'button', p.element('workspace').querySelectorAll('.staff-row').find(row => row.textContent.includes(account))));
   assertFocus(p, p.field('Reason'));
-  assert.equal(p.field('Demo account ID').value, account);
+  assert.equal(p.field('Account ID').value, account);
   p.field('Assignment').value = '';
   p.field('Reason').value = 'The local demo review is complete.';
-  const remove = p.find('Save demo assignment');
+  const remove = p.find('Save assignment');
   p.submit(remove);
   assert.equal(remove.isConnected, false);
   assert.equal(p.model.staff().some(member => member.id === account), false);
   assert.equal(p.saved().staff.some(member => member.id === account), false);
   assert.equal(p.model.audit().at(-1).action, 'staff.remove');
-  assertFocus(p, p.find('Save demo assignment'));
+  assertFocus(p, p.find('Save assignment'));
 });
 
 for (const mobile of [false, true]) {
@@ -621,27 +638,27 @@ for (const mobile of [false, true]) {
     assert.equal(card.isConnected, false);
     assertFocus(p, p.find(`View ${entry.title}`));
 
-    const add = p.find('Add to demo library');
+    const add = p.find('Add to library');
     add.focus();
     p.resize(mobile);
     assert.equal(add.isConnected, false);
-    assertFocus(p, p.find('Add to demo library'));
+    assertFocus(p, p.find('Add to library'));
 
-    p.click(p.find('Add to demo library'));
-    p.click(p.find('Demo library (1)'));
+    p.click(p.find('Add to library'));
+    p.click(p.find('My library (1)'));
     for (const nextMobile of [!mobile, mobile]) {
-      const remove = p.find('Remove from demo library');
+      const remove = p.find('Remove from library');
       remove.focus();
       p.resize(nextMobile);
       assert.equal(remove.isConnected, false);
-      assertFocus(p, p.find('Remove from demo library'));
+      assertFocus(p, p.find('Remove from library'));
     }
 
     const search = p.field('Search mods');
     search.focus();
     p.resize(!mobile);
     assertFocus(p, search);
-    const outside = p.element('demo-toggle');
+    const outside = p.element('account-link');
     outside.focus();
     p.resize(mobile);
     assertFocus(p, outside);
@@ -673,28 +690,91 @@ test('library removal focuses the remaining detail action, then the empty-librar
   const actorId = p.model.actor.id;
   for (const entry of entries) {
     p.click(p.find(`View ${entry.title}`));
-    p.click(p.find('Add to demo library'));
-    assertFocus(p, p.find('Remove from demo library'));
+    p.click(p.find('Add to library'));
+    assertFocus(p, p.find('Remove from library'));
   }
-  p.click(p.find('Demo library (2)'));
+  p.click(p.find('My library (2)'));
   p.click(p.find(`View ${entries[0].title}`));
-  const firstRemove = p.find('Remove from demo library');
+  const firstRemove = p.find('Remove from library');
   p.click(firstRemove);
   assert.equal(firstRemove.isConnected, false);
   assert.deepEqual(p.model.library(), [entries[1].id]);
   assert.deepEqual(p.saved().libraries[actorId], [entries[1].id]);
-  assert.ok(p.find('Demo library (1)'));
+  assert.ok(p.find('My library (1)'));
   assert.equal(p.element('workspace').querySelector('.detail h2').textContent.trim(), entries[1].title);
-  assertFocus(p, p.find('Remove from demo library'));
+  assertFocus(p, p.find('Remove from library'));
 
-  const lastRemove = p.find('Remove from demo library');
+  const lastRemove = p.find('Remove from library');
   p.click(lastRemove);
   assert.equal(lastRemove.isConnected, false);
   assert.deepEqual(p.model.library(), []);
   assert.deepEqual(p.saved().libraries[actorId], []);
-  assert.ok(p.find('Demo library (0)'));
+  assert.ok(p.find('My library (0)'));
   assertFocus(p, p.find('Explore mods'));
   p.click(p.find('Explore mods'));
-  assertFocus(p, p.find('Add to demo library'));
+  assertFocus(p, p.find('Add to library'));
   assert.ok(p.find(`View ${entries[0].title}`));
+});
+
+
+test('Account switching preserves an expanded visible control, identity, capabilities and saved selections', async () => {
+  let p = await page();
+  const player = p.model.actor;
+  const entry = catalog.listings.find(entry => entry.status === 'published');
+  p.click(p.find('Add to library'));
+  p.click(p.element('account-link'));
+  const creators = p.model.accounts().filter(account => account.role === 'creator');
+  for (const account of creators) {
+    const switcher = p.element('workspace').querySelector('.account-switcher');
+    switcher.open = true;
+    switcher.listeners.toggle();
+    const previous = p.document.querySelector(`[data-focus-key="account:switch:${account.id}"]`);
+    p.click(previous);
+    assert.equal(previous.isConnected, false);
+    const current = p.document.querySelector(`[data-focus-key="account:switch:${account.id}"]`);
+    assert.equal(p.element('workspace').querySelector('.account-switcher').open, true);
+    assertFocus(p, current);
+    assert.equal(current.getAttribute('aria-pressed'), 'true');
+    assert.equal(p.element('account-name').textContent, account.name);
+    assert.equal(p.model.actor.id, account.id);
+    assert.ok(p.find('Creator workspace'));
+    assert.equal(p.query('Staff & audit'), null);
+    assert.deepEqual(p.model.library(), []);
+  }
+  p = await p.reload();
+  assert.equal(p.model.actor.id, creators.at(-1).id);
+  p.role('player');
+  assert.deepEqual(p.model.library(), [entry.id]);
+  assert.equal(p.element('account-name').textContent, player.name);
+  assert.equal(p.query('Creator workspace'), null);
+  p.click(p.element('account-link'));
+  const preferences = p.element('workspace').querySelector('.account-reset');
+  preferences.open = true;
+  preferences.listeners.toggle();
+  const reset = p.find('Reset saved data');
+  p.click(reset);
+  assert.equal(reset.isConnected, false);
+  assert.equal(p.element('workspace').querySelector('.account-reset').open, true);
+  assertFocus(p, p.find('Reset saved data'));
+  assert.deepEqual(p.model.library(), []);
+  assert.deepEqual(p.model.audit(), []);
+  assert.equal(p.model.actor.id, player.id);
+});
+
+test('staff forms resolve shared gamertags and keep known names in the roster and audit', async () => {
+  const p = await page();
+  p.role('admin');
+  p.click(p.find('Staff & audit'));
+  const account = catalog.accounts['player-demo'];
+  p.field('Account ID').value = account.gamertag;
+  p.field('Assignment').value = 'moderator';
+  p.field('Reason').value = 'Help with reviews.';
+  p.submit(p.find('Save assignment'));
+  assert.equal(p.model.staff().find(member => member.id === 'player-demo').role, 'moderator');
+  const row = p.element('workspace').querySelectorAll('.staff-row').find(row => row.textContent.includes(account.name));
+  assert.ok(row);
+  assert.ok(p.element('workspace').querySelector('.audit').textContent.includes(account.name));
+  p.click(p.find('Edit assignment', 'button', row));
+  assert.equal(p.field('Account ID').value, account.gamertag);
+  assertFocus(p, p.field('Reason'));
 });

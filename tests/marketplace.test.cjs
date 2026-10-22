@@ -53,7 +53,7 @@ test('exports the same pure API to Node and a browser without storage or clocks'
   const webModel = browser.window.CinnabarMarketplace.createModel(source);
   assert.deepEqual(clone(webModel.listings()), model.listings());
   assert.deepEqual(model.roles, Object.keys(catalog.roles));
-  assert.deepEqual(model.actor, {id: 'player-demo', role: 'player', name: 'Player demo'});
+  assert.deepEqual(model.actor, {id: 'player-demo', ...catalog.accounts['player-demo']});
   assert.equal(model.state.actorRole, 'player');
   model.listings()[0].permissions.push('Changed outside');
   assert.deepEqual(model.listings(), source.listings);
@@ -284,7 +284,10 @@ test('grants, changes and removes staff roles with reasons, permission checks an
   const model = createModel(catalog);
   rejectsWithoutMutation(model, () => model.manageStaff('helper', 'moderator', 'Help review', 1), /permission/i);
   model.setRole('admin');
-  assert.deepEqual(model.staff(), []);
+  const initial = model.staff();
+  assert.deepEqual(initial.map(member => member.id), Object.entries(catalog.accounts)
+    .filter(([, profile]) => catalog.roles[profile.role]?.some(permission => ['submission.review', 'staff.manage'].includes(permission)))
+    .map(([id]) => id));
   for (const reason of ['', ' ', undefined, null]) {
     rejectsWithoutMutation(model, () => model.manageStaff('helper', 'moderator', reason, 1), /reason/i);
   }
@@ -293,10 +296,10 @@ test('grants, changes and removes staff roles with reasons, permission checks an
   }
   rejectsWithoutMutation(model, () => model.manageStaff(' admin-demo ', 'moderator', 'Self', 1), /own/i);
   rejectsWithoutMutation(model, () => model.manageStaff('', 'moderator', 'Help review', 1), /ID/i);
-  assert.deepEqual(model.manageStaff(' helper ', 'moderator', '  Help review  ', 2), [{id: 'helper', role: 'moderator', updatedAt: 2}]);
+  assert.deepEqual(model.manageStaff(' helper ', 'moderator', '  Help review  ', 2), initial.concat({id: 'helper', role: 'moderator', updatedAt: 2}));
   model.manageStaff('helper', 'admin', 'Manage reviewers', 3);
   rejectsWithoutMutation(model, () => model.manageStaff('helper', null, '', 4), /reason/i);
-  assert.deepEqual(model.manageStaff('helper', null, 'Access no longer needed', 4), []);
+  assert.deepEqual(model.manageStaff('helper', null, 'Access no longer needed', 4), initial);
   assert.deepEqual(model.audit().map(event => [event.action, event.previousRole, event.newRole, event.at]), [
     ['staff.grant', null, 'moderator', 2], ['staff.grant', 'moderator', 'admin', 3], ['staff.remove', 'admin', null, 4]
   ]);
@@ -314,7 +317,7 @@ test('derives staff eligibility and action permissions from changed catalog role
   model.setRole('creator');
   model.manageStaff('review-helper', 'inspector', 'Review support', 1);
   model.manageStaff('staff-helper', 'coordinator', 'Staff support', 2);
-  assert.deepEqual(model.staff().map(member => member.role), ['inspector', 'coordinator']);
+  assert.deepEqual(model.staff().filter(member => member.id.endsWith('-helper')).map(member => member.role), ['inspector', 'coordinator']);
   const entry = pending(model);
   model.setRole('inspector');
   assert.equal(model.transition(entry.id, 'approve', 'Inspected', 102).status, 'published');
@@ -448,4 +451,54 @@ test('safely restores malformed state, filters damaged records and ignores catal
   assert.equal(restored.audit().length, 1);
   assert.equal(restored.can('staff.manage'), false);
   assert.equal(restored.listings().some(entry => entry.id === 8888), false);
+});
+
+
+test('shared account selection isolates same-role ownership and libraries and restores legacy roles', () => {
+  const model = createModel(catalog);
+  const creators = model.accounts().filter(account => account.role === 'creator');
+  assert.ok(creators.length > 1);
+  const entry = catalog.listings.find(entry => entry.status === 'published');
+  const [first, second] = creators;
+  model.setAccount(first.id);
+  model.toggleLibrary(entry.id, 1);
+  const draft = model.saveSubmission(fields(), 2);
+  model.setAccount(second.id);
+  assert.equal(model.actor.name, second.name);
+  assert.deepEqual(model.library(), []);
+  rejectsWithoutMutation(model, () => model.saveSubmission(fields(), 3, draft.id), /own/i);
+  model.toggleLibrary(entry.id, 4);
+  const restored = createModel(catalog, model.exportState());
+  assert.deepEqual(restored.actor, second);
+  assert.deepEqual(restored.library(), [entry.id]);
+  assert.equal(restored.audit().at(-1).actorId, second.id);
+  const legacy = model.exportState();
+  delete legacy.actorId;
+  legacy.actorRole = 'creator';
+  const migrated = createModel(catalog, legacy);
+  assert.equal(migrated.actor.id, 'creator-demo');
+  assert.deepEqual(migrated.library(), [entry.id]);
+  for (const id of ['__proto__', 'constructor', 'missing', null]) {
+    rejectsWithoutMutation(model, () => model.setAccount(id), /unknown.*account/i);
+  }
+});
+
+test('profile metadata and staff roster changes never replace role capabilities', () => {
+  const changed = clone(catalog);
+  changed.accounts['player-demo'].permissions = ['staff.manage'];
+  const model = createModel(changed);
+  assert.equal(model.can('staff.manage'), false);
+  model.setRole('admin');
+  model.manageStaff('player-demo', 'admin', 'Assist staff', 1);
+  model.setAccount('player-demo');
+  assert.equal(model.actor.role, 'player');
+  assert.equal(model.can('staff.manage'), false);
+  model.setRole('admin');
+  for (const member of model.staff()) {
+    if (member.id !== model.actor.id) model.manageStaff(member.id, null, 'Remove assignment', 2);
+  }
+  const saved = model.exportState();
+  saved.staff = [];
+  const restored = createModel(catalog, saved);
+  assert.deepEqual(restored.staff(), [], 'explicit saved removals never resurrect fixture staff');
 });

@@ -21,9 +21,19 @@ marketplace proof of concept demonstrates discovery and publishing workflows.
 The marketplace uses synthetic examples and browser-local state. It cannot install
 mods, authenticate accounts, grant real permissions, or publish submissions.
 Microsoft account registration and an authoritative backend remain pending.
-Microsoft authentication is not live. An explicit demo role switch lets players,
-creators, and staff try the browser-local flows; it grants no real permissions.
-The client repository owns catalog data, roles, and review transitions.
+The interface opens as a fictional signed-in player. Account shows the scenario's
+name, gamertag, role, and Microsoft provider; Switch account offers the shared
+profiles for player, creator, and staff workflows. This is a presentation of local
+scenarios, not an authenticated Microsoft session. Account metadata supplies names;
+capabilities still come from the shared role policy. Library changes, submissions,
+staff assignments, and audit activity stay in browser storage. Reset saved data is
+inside Account preferences. The client repository owns catalog data, account
+profiles, roles, and review transitions.
+
+Keep setup instructions and proof-of-concept limitations in contributor docs.
+Normal product screens use concise task language without demo banners, repeated
+local-state notices, disabled sign-in setup, or simulated upload/download controls.
+Adding to the library does not install a mod or grant its requested permissions.
 
 ## Brand Commitments
 
@@ -41,4 +51,4 @@ marketplace directly in the existing static website, without new raster artwork.
 
 Keep discovery, listing detail, and creator/staff workflows usable on mobile, with
 controls at least 44px high. Players read requested permissions before saving a
-listing to the demo library.
+listing to their library.
