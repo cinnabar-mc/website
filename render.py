@@ -41,6 +41,15 @@ def build(repository, output):
     page = page.replace("@@REPOSITORY_URL@@", repository_url)
     output.mkdir(parents=True, exist_ok=True)
     (output / "index.html").write_text(page)
+    marketplace = output / "marketplace"
+    marketplace.mkdir(parents=True, exist_ok=True)
+    marketplace_page = (HERE / "marketplace.html.in").read_text()
+    marketplace_page = marketplace_page.replace("@@RED@@", red)
+    marketplace_page = marketplace_page.replace("@@FAVICON@@", "data:image/svg+xml," + quote(icon, safe=""))
+    (marketplace / "index.html").write_text(marketplace_page)
+    for asset in ("marketplace.css", "marketplace.js", "marketplace-model.js"):
+        shutil.copyfile(HERE / asset, marketplace / asset)
+    shutil.copyfile(repository / INPUTS["marketplace"], marketplace / "catalog.json")
     (output / "downloads.js").write_text("window.CINNABAR_DOWNLOADS = " + json.dumps(config) + ";\n")
     shutil.copyfile(HERE / "app.js", output / "app.js")
     shutil.copyfile(HERE / "presence.js", output / "presence.js")

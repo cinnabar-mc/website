@@ -1,12 +1,13 @@
 {
   "repository": "cinnabar-mc/cinnabar",
   "branch": "dev",
-  "revision": "31ec2294fd662e6d49fc171dfb50bf653aa8ad36",
+  "revision": "cc55dd52c3e0ea978b7a9b739522c663fa73e81d",
   "inputs": {
     "release_manifest": "packaging/release-assets.json",
     "api_contract": "crates/bridge/data/contract.json",
     "icon": "packaging/icons/cinnabar.svg",
     "title": "assets/branding/title.png",
-    "discord_mark": "assets/branding/discord.path"
+    "discord_mark": "assets/branding/discord.path",
+    "marketplace": "crates/launcher/data/marketplace-demo.json"
   }
 }

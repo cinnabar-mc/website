@@ -22,6 +22,25 @@ names the release manifest, API contract, title and icon used by the renderer.
 `source.py fetch` materializes only those files in the ignored `.source/` checkout.
 To render against another local client checkout, use `python3 render.py --source PATH`.
 
+## Marketplace proof of concept
+
+`/marketplace/` adds a free community mod storefront with search, category filters,
+listing permissions, and a browser demo library. Expand **Try another role** to
+try creator submissions, moderation decisions, and staff assignments with a local
+audit trail. The sample catalog is synthetic; state stays in browser storage.
+Reset demo data restores the examples. There are no downloads, uploads, real
+accounts, or server-side permission grants. Microsoft sign-in has an explicit
+setup view and remains disabled.
+
+`source.json` declares the client's `crates/launcher/data/marketplace-demo.json`;
+the renderer copies it unchanged to `dist/marketplace/catalog.json`. Roles,
+capabilities, review transitions, and reason requirements come from that file.
+Run the normal build/test commands above, then preview with
+`python3 -m http.server 8000 --directory dist` and open `/marketplace/`.
+
+See [screen design](docs/marketplace-design.md) and the client's
+[production API and identity plan](https://github.com/cinnabar-mc/cinnabar/blob/dev/docs/marketplace.md).
+
 The hourly Update client inputs workflow checks the client's `dev` branch. It
 opens a tested PR changing the pin only when one of the declared inputs changes;
 unrelated client commits leave the pin alone. One input-update PR stays open at a

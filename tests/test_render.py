@@ -65,7 +65,7 @@ class RenderTests(unittest.TestCase):
             platform: {arch: "fixture-" + name for arch, name in arches.items()}
             for platform, arches in self.config["manual_assets"].items()
         }
-        for path in (RENDER.INPUTS["icon"], RENDER.INPUTS["title"], RENDER.INPUTS["discord_mark"]):
+        for path in (RENDER.INPUTS["icon"], RENDER.INPUTS["title"], RENDER.INPUTS["discord_mark"], RENDER.INPUTS["marketplace"]):
             target = self.repository / path
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(SOURCE / path, target)
@@ -126,7 +126,7 @@ class RenderTests(unittest.TestCase):
                          f'https://github.com/{self.config["repository"]}/releases/download/nightly/')
         self.assertEqual(config["nightly_install_command"], config["install_command"] + " -s -- --channel nightly")
         self.assertEqual({path.name for path in self.output.iterdir()}, {
-            "index.html", "downloads.js", "app.js", "presence.js", "history.js", "title.png", "texture.svg",
+            "index.html", "downloads.js", "app.js", "presence.js", "history.js", "title.png", "texture.svg", "marketplace",
         })
         self.assertFalse((self.output / self.config["install_script"]).exists())
 
@@ -156,6 +156,31 @@ class RenderTests(unittest.TestCase):
         self.assertIn('class="first-open"', html)
         self.assertEqual((self.output / "title.png").read_bytes(),
                          (self.repository / RENDER.INPUTS["title"]).read_bytes())
+
+    def test_marketplace_uses_exact_shared_catalog_and_local_assets(self):
+        """Keep the shared fixture authoritative and the new route self-contained."""
+        catalog = self.repository / RENDER.INPUTS["marketplace"]
+        original = json.loads(catalog.read_text())
+        original["listings"][0]["title"] = "Alternate source fixture"
+        catalog.write_text(json.dumps(original))
+        RENDER.build(self.repository, self.output)
+        market = self.output / "marketplace"
+        self.assertEqual((market / "catalog.json").read_bytes(), catalog.read_bytes())
+        self.assertEqual({path.name for path in market.iterdir()}, {
+            "index.html", "marketplace.css", "marketplace.js", "marketplace-model.js", "catalog.json",
+        })
+        html = (market / "index.html").read_text()
+        self.assertNotIn("@@", html)
+        page = Page()
+        page.feed(html)
+        for script in page.scripts:
+            self.assertIn("defer", script)
+            self.assertTrue((self.output / script["src"].lstrip("/")).is_file())
+        landing = Page()
+        landing.feed((self.output / "index.html").read_text())
+        self.assertTrue(any(tag == "a" and attrs.get("href") == "/marketplace/"
+                            and any(parent == "header" for parent, _ in ancestors)
+                            for tag, attrs, ancestors in landing.elements))
 
 
 if __name__ == "__main__":
