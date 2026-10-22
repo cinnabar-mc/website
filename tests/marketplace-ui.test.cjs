@@ -174,7 +174,7 @@ function nameOf(control) {
 function assertFocus(p, control) {
   assert.equal(control.isConnected, true, `${nameOf(control)} is connected`);
   assert.equal(control.disabled, false, `${nameOf(control)} is enabled`);
-  assert.equal(p.document.activeElement, control, `keyboard focus is on ${nameOf(control)}`);
+  assert.ok(p.document.activeElement === control, `keyboard focus is on ${nameOf(control)}`);
 }
 
 /** Load the real controller with the shared catalog and explicit in-memory storage. */
@@ -195,12 +195,19 @@ async function page(source = catalog, {storage = new Map(), mobile = false} = {}
     return found;
   };
   let roleModel;
+  const mediaListeners = new Set();
+  const media = {
+    get matches() { return mobile; },
+    addEventListener(event, listener) {
+      if (event === 'change') mediaListeners.add(listener);
+    },
+  };
   const window = {CinnabarMarketplace: {createModel(...args) { roleModel = createModel(...args); return roleModel; }}};
   vm.runInNewContext(script, {
     window, document,
     localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value)},
     fetch: async () => ({ok: true, json: async () => source}),
-    matchMedia: () => ({matches: mobile, addEventListener() {}}),
+    matchMedia: () => media,
     location: {reload() {}}, Date,
   });
   for (let turn = 0; turn < 10 && !element('workspace').children.length; turn++) await Promise.resolve();
@@ -217,6 +224,12 @@ async function page(source = catalog, {storage = new Map(), mobile = false} = {}
   };
   return {
     document, element, model: roleModel, query, click,
+    /** Cross the responsive breakpoint and dispatch its actual change subscribers. */
+    resize(nextMobile) {
+      if (mobile === nextMobile) return;
+      mobile = nextMobile;
+      for (const listener of mediaListeners) listener({matches: mobile});
+    },
     find(text, tag = 'button', root = document.body) {
       const found = query(text, tag, root);
       assert.ok(found, `${tag} labeled ${text} exists`);
@@ -599,6 +612,41 @@ test('granting and removing a staff assignment keep focus on the submit control'
 });
 
 for (const mobile of [false, true]) {
+  test(`responsive reflow preserves catalog and library focus starting on ${mobile ? 'mobile' : 'desktop'}`, async () => {
+    const p = await page(catalog, {mobile});
+    const entry = catalog.listings.find(entry => entry.status === 'published');
+    const card = p.find(`View ${entry.title}`);
+    card.focus();
+    p.resize(!mobile);
+    assert.equal(card.isConnected, false);
+    assertFocus(p, p.find(`View ${entry.title}`));
+
+    const add = p.find('Add to demo library');
+    add.focus();
+    p.resize(mobile);
+    assert.equal(add.isConnected, false);
+    assertFocus(p, p.find('Add to demo library'));
+
+    p.click(p.find('Add to demo library'));
+    p.click(p.find('Demo library (1)'));
+    for (const nextMobile of [!mobile, mobile]) {
+      const remove = p.find('Remove from demo library');
+      remove.focus();
+      p.resize(nextMobile);
+      assert.equal(remove.isConnected, false);
+      assertFocus(p, p.find('Remove from demo library'));
+    }
+
+    const search = p.field('Search mods');
+    search.focus();
+    p.resize(!mobile);
+    assertFocus(p, search);
+    const outside = p.element('demo-toggle');
+    outside.focus();
+    p.resize(mobile);
+    assertFocus(p, outside);
+  });
+
   test(`catalog row selection preserves focus on the replacement card on ${mobile ? 'mobile' : 'desktop'}`, async () => {
     const p = await page(catalog, {mobile});
     const published = catalog.listings.filter(entry => entry.status === 'published');

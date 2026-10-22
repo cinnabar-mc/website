@@ -226,6 +226,7 @@
   function renderCatalog(focusSelection = false) {
     const region = document.getElementById('catalog-results');
     if (!region) return;
+    const focused = document.activeElement;
     const entries = view === 'library' ? model.libraryEntries(query, category) : model.search(query, category);
     if (!entries.some(entry => entry.id === selectedId)) selectedId = entries[0]?.id ?? null;
     const summary = node('div', 'results-label');
@@ -262,6 +263,7 @@
     }
     region.replaceChildren(summary, layout);
     if (focusSelection) region.querySelector(`[data-listing="${selectedId}"]`)?.focus();
+    else restoreFocus(focused);
   }
 
   /** Create a labeled native form control and return both the wrapper and input. */
