@@ -27,6 +27,7 @@ jobs:
           node-version: '22'
       - name: Test website and deployment boundary
         run: |
+          npm ci
           python3 source.py fetch
           python3 render.py
           node --test tests/*.test.cjs

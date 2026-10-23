@@ -50,6 +50,7 @@ jobs:
       - name: Validate updated inputs
         if: steps.source.outputs.changed == 'true'
         run: |
+          npm ci
           python3 render.py
           node --test tests/*.test.cjs
           python3 -m unittest discover -s tests -p 'test_*.py' -v

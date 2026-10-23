@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore free Cinnabar community mods and inspect their requested permissions.">
+  <title>Marketplace · Cinnabar</title>
+  <link rel="icon" type="image/svg+xml" href="@@FAVICON@@">
+  <link rel="stylesheet" href="/site.css">
+  <link rel="stylesheet" href="/marketplace.css">
+</head>
+<body>
+  <a class="skip-link" href="#app">Skip to marketplace</a>
+  @@SITE_HEADER@@
+  <div class="shell">
+    <div class="market-heading">
+      <a href="/mods/" aria-label="Cinnabar marketplace"><img class="wordmark" src="/title.png" alt="Cinnabar" width="1022" height="282"></a>
+      <div><h1>Make it your world.</h1><p>Small additions. More ways to play.</p></div>
+      <div class="account" id="account"></div>
+    </div>
+    <div class="preview-note" id="preview-note" hidden><p><strong>Marketplace preview.</strong> Mods and accounts are fictional. Nothing is installed, scanned or published.</p><button type="button" id="reset-preview" class="quiet">Reset preview</button></div>
+    <nav class="tabs" id="navigation" aria-label="Marketplace"></nav>
+    <main id="app" tabindex="-1"><p class="empty" role="status">Loading marketplace…</p></main>
+    <noscript><p class="notice">Enable JavaScript to browse the marketplace. Client downloads remain available on the home page.</p></noscript>
+    <p id="feedback" class="feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+    <footer class="market-footer"><span>Cinnabar community mods · Free to explore.</span><span>Permissions stay under your control.</span></footer>
+  </div>
+  <dialog id="signin-dialog" aria-labelledby="signin-title">
+    <div class="row between"><h2 id="signin-title">Choose a preview account</h2><button type="button" data-close class="quiet" aria-label="Close account chooser">Close</button></div>
+    <p class="muted">Sample accounts demonstrate player, creator and staff workflows. Real Microsoft sign-in is provided by the API in live mode.</p>
+    <div id="signin-body" class="personas"></div>
+  </dialog>
+  <script src="/downloads.js" defer></script>
+  <script src="/marketplace-capabilities.js" defer></script>
+  <script src="/marketplace-core.js" defer></script>
+  <script src="/marketplace-content.js" defer></script>
+  <script src="/marketplace-mock.js" defer></script>
+  <script src="/marketplace-http.js" defer></script>
+  <script src="/marketplace-validation.js" defer></script>
+  <script src="/marketplace.js" defer></script>
+</body>
+</html>

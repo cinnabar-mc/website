@@ -53,7 +53,7 @@ class RenderTests(unittest.TestCase):
         self.root = Path(temporary.name)
         self.repository = self.root / "source"
         self.output = self.root / "candidate"
-        self.config = json.loads((SOURCE / RENDER.INPUTS["release_manifest"]).read_text())
+        self.config = json.loads((SOURCE / RENDER.INPUTS["release_manifest"]).read_text(encoding="utf-8"))
         self.config["repository"] = "fixture/download-contract"
         self.config["website"] = "https://unrelated-site.invalid"
         self.config["install_script"] = "fixture-" + self.config["install_script"]
@@ -65,7 +65,7 @@ class RenderTests(unittest.TestCase):
             platform: {arch: "fixture-" + name for arch, name in arches.items()}
             for platform, arches in self.config["manual_assets"].items()
         }
-        for path in (RENDER.INPUTS["icon"], RENDER.INPUTS["title"], RENDER.INPUTS["discord_mark"]):
+        for path in (RENDER.INPUTS["icon"], RENDER.INPUTS["title"], RENDER.INPUTS["discord_mark"], RENDER.INPUTS["mod_grants"]):
             target = self.repository / path
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(SOURCE / path, target)
@@ -79,19 +79,19 @@ class RenderTests(unittest.TestCase):
         }]}))
 
     def config_from_output(self):
-        script = (self.output / "downloads.js").read_text()
+        script = (self.output / "downloads.js").read_text(encoding="utf-8")
         return json.loads(script.removeprefix("window.CINNABAR_DOWNLOADS = ").removesuffix(";\n"))
 
     def test_discord_mark_uses_shared_client_branding(self):
         (self.repository / RENDER.INPUTS["discord_mark"]).write_text("M0 0L1 1Z\n")
         RENDER.build(self.repository, self.output)
-        self.assertIn('<path d="M0 0L1 1Z"', (self.output / "index.html").read_text())
+        self.assertIn('<path d="M0 0L1 1Z"', (self.output / "index.html").read_text(encoding="utf-8"))
 
     def test_download_guidance_and_player_activity_stay_grouped(self):
         """Keep social navigation separate and presence inside its history region."""
         RENDER.build(self.repository, self.output)
         page = Page()
-        page.feed((self.output / "index.html").read_text())
+        page.feed((self.output / "index.html").read_text(encoding="utf-8"))
         positions = {}
         for index, (tag, attrs, ancestors) in enumerate(page.elements):
             if attrs.get("class") in {"github", "discord"}:
@@ -127,12 +127,15 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(config["nightly_install_command"], config["install_command"] + " -s -- --channel nightly")
         self.assertEqual({path.name for path in self.output.iterdir()}, {
             "index.html", "downloads.js", "app.js", "presence.js", "history.js", "title.png", "texture.svg",
+            "mods", "marketplace", "site.css", "marketplace.css", "marketplace-capabilities.js",
+            "marketplace-core.js", "marketplace-mock.js", "marketplace-http.js", "marketplace-content.js",
+            "marketplace-validation.js", "marketplace.js", "validator",
         })
         self.assertFalse((self.output / self.config["install_script"]).exists())
 
     def test_rendered_page_assets_and_mac_first_open_guidance_are_complete(self):
         RENDER.build(self.repository, self.output)
-        html = (self.output / "index.html").read_text()
+        html = (self.output / "index.html").read_text(encoding="utf-8")
         self.assertNotIn("@@", html)
         page = Page()
         page.feed(html)
@@ -156,6 +159,33 @@ class RenderTests(unittest.TestCase):
         self.assertIn('class="first-open"', html)
         self.assertEqual((self.output / "title.png").read_bytes(),
                          (self.repository / RENDER.INPUTS["title"]).read_bytes())
+
+    def test_marketplace_uses_shared_branding_origin_and_pinned_capability_descriptors(self):
+        """A client descriptor change must reach the page without a website snapshot edit."""
+        grants = self.repository / RENDER.INPUTS["mod_grants"]
+        grants.write_text(grants.read_text(encoding="utf-8").replace('permission("HUD",', 'permission("Fixture HUD",'), encoding="utf-8")
+        RENDER.build(self.repository, self.output)
+        config = self.config_from_output()
+        self.assertEqual(config["marketplace"], {"backend": "mock", "api_url": "https://fixture-api.invalid/v1"})
+        caps = (self.output / "marketplace-capabilities.js").read_text(encoding="utf-8")
+        self.assertIn('"label": "Fixture HUD"', caps)
+        page = (self.output / "mods/index.html").read_text(encoding="utf-8")
+        self.assertNotIn("@@", page)
+        self.assertIn('id="preview-note"', page)
+        self.assertEqual(page, (self.output / "marketplace/index.html").read_text(encoding="utf-8"))
+        parser = Page()
+        parser.feed(page)
+        for script in parser.scripts:
+            self.assertIn("defer", script)
+            self.assertTrue((self.output / script["src"].lstrip("/")).is_file())
+        for filename in ("marketplace-validator-worker.js", "js-component-bindgen-component.core.wasm", "JCO-LICENSE"):
+            self.assertTrue((self.output / "validator" / filename).is_file())
+
+    def test_capability_extractor_refuses_unknown_grant_shapes(self):
+        """New client field types must not silently become boolean permissions."""
+        text = (self.repository / RENDER.INPUTS["mod_grants"]).read_text(encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "unsupported grant type"):
+            RENDER.capability_descriptors(text.replace('pub hud: bool,', 'pub hud: u64,'))
 
 
 if __name__ == "__main__":
