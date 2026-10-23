@@ -30,11 +30,13 @@ async function page(hash = '#/', stored, http) {
   window.HTMLElement.prototype.showModal = function () { this.open = true; };
   window.HTMLElement.prototype.close = function () { this.open = false; };
   const listeners = {};
+  const timers = new Map(); let timerId = 0;
   const win = { CinnabarMarket: M, CinnabarContent: C, CinnabarMarketMock: Mock,
     CinnabarMarketHttp: { createHttpApi: () => http },
     CINNABAR_DOWNLOADS: { marketplace: { backend: http ? 'http' : 'mock', api_url: 'https://api.invalid/v1' } }, localStorage: storage,
     CinnabarValidation: { validate: async () => ({ imports: [], exports: [] }) },
-    addEventListener: (name, fn) => { listeners[name] = fn; }, scrollTo() {}, fetch() {}, location };
+    addEventListener: (name, fn) => { listeners[name] = fn; }, scrollTo() {}, fetch() {}, location,
+    setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id) };
   vm.runInNewContext(fs.readFileSync(path.join(root, 'marketplace.js'), 'utf8'), {
     window: win, document, location, history: { replaceState() {} }, URLSearchParams, URL,
     crypto: webcrypto, AbortController, TextDecoder, TextEncoder, Uint8Array, ArrayBuffer,
@@ -48,7 +50,8 @@ async function page(hash = '#/', stored, http) {
   async function input(selector, value) { const element = document.querySelector(selector); element.value = value; element.focus(); element.dispatchEvent(new window.Event('input', { bubbles: true })); await settle(); }
   /** Select a fictional persona through the actual sign-in dialogue. */
   async function signIn(name) { await click(document.querySelector('#account button')); await click([...document.querySelectorAll('#signin-body button')].find(button => button.textContent.includes(name))); }
-  return { window, document, memory, win, route, click, input, signIn, text: () => document.getElementById('app').textContent };
+  async function tick() { const queued = [...timers.values()]; timers.clear(); for (const fn of queued) await fn(); await settle(); }
+  return { window, document, memory, win, route, click, input, signIn, tick, timers, text: () => document.getElementById('app').textContent };
 }
 
 test('search retains input focus, category state survives a detail round trip, and gallery absence is explicit', async () => {
@@ -164,4 +167,109 @@ test('resolved reports do not expose a pull action without an editable reason', 
   const pulls = [...p.document.querySelectorAll('#app button')].filter(control => control.textContent === 'Pull release');
   assert.equal(pulls.length, 1);
   assert.ok(pulls[0].closest('article').querySelector('textarea'));
+});
+
+/** A normalized live API release; all outcomes below come from response fixtures, never UI simulation. */
+function liveRelease(state = 'queued') {
+  return { id: '42', slug: 'live-mod', name: 'Live mod', version: '1.0.0', status: 'submitted',
+    creator: 'creator', creator_name: 'Creator', approvals: [], grants: { hud: true }, capabilities: ['hud'], reach: 0,
+    description: '## HUD\n<script>unsafe()</script>', sha256: 'a'.repeat(64), gallery: [], publication: null,
+    scan: { state, review_ready: state === 'complete', completed_at: Date.now(), expires_at: Date.now() + 60000,
+      report: state === 'complete' ? { deterministic: 'pass', validator: 'test-validator', policy: 'test-policy',
+        findings: [], ai: { verdict: 'clear', model: 'test-model', prompt: 'test-prompt', findings: [] } } : null } };
+}
+
+/** HTTP-shaped fixture keeps session, reads and mutation responses observable. */
+function liveApi(version, role = 'moderator') {
+  const calls = [];
+  const api = { backend: 'http', calls, account: { xuid: role === 'player' ? 'creator' : 'staff', gamertag: 'Signed in', role },
+    fileUrl: id => 'https://api.invalid/v1/staff/versions/' + id + '/file',
+    request: async (method, path, body) => {
+      calls.push({ method, path, body });
+      if (path === '/me') return { status: 200, body: { account: api.account, library: [] } };
+      if (path === '/mods') return { status: 200, body: [] };
+      if (path === '/me/mods') return { status: 200, body: [structuredClone(version)] };
+      if (path === '/staff/queue') return { status: 200, body: version.status === 'submitted' ? [structuredClone(version)] : [] };
+      if (path === '/staff/versions/42') return { status: 200, body: structuredClone(version) };
+      return { status: 403, body: { error: 'A fresh sign-in is required.' } };
+    } };
+  return api;
+}
+
+test('live review requires server readiness and explanatory notes for AI flags, with inert evidence', async () => {
+  const version = liveRelease('queued');
+  const api = liveApi(version);
+  const p = await page('#/staff/queue/42', undefined, api);
+  assert.equal(p.document.querySelector('[data-focus-key="decision:approve"]').disabled, true);
+  assert.match(p.text(), /Queued for scanning/);
+  assert.equal(p.document.querySelector('#app script'), null);
+  Object.assign(version, liveRelease('complete'));
+  version.scan.report.ai = { verdict: 'flag', findings: ['<img src=x onerror=unsafe()>'], model: 'review-model', prompt: 'v1' };
+  await p.tick();
+  assert.match(p.text(), /Flagged for staff review/);
+  assert.equal(p.document.querySelector('.scan-findings img'), null);
+  assert.equal(p.document.querySelector('[data-focus-key="decision:approve"]').disabled, true);
+  await p.input('#review-note', 'Inspected the artifact and resolved the flagged string.');
+  assert.equal(p.document.querySelector('[data-focus-key="decision:approve"]').disabled, false);
+  await p.click(p.document.querySelector('[data-focus-key="decision:approve"]'));
+  assert.match(p.text(), /A fresh sign-in is required/);
+  await p.tick();
+  assert.equal(p.document.querySelector('#review-note').value, 'Inspected the artifact and resolved the flagged string.');
+  assert.equal(p.document.activeElement.id, 'review-note');
+});
+
+test('creator status refreshes through scanning and automatic publication, pausing when hidden or navigating', async () => {
+  const version = liveRelease(); const api = liveApi(version, 'player');
+  const p = await page('#/mine/42', undefined, api);
+  assert.match(p.text(), /Queued for scanning/);
+  version.scan.state = 'running'; await p.tick(); assert.match(p.text(), /Scanning/);
+  version.status = 'approved'; version.publication = 'automatic'; await p.tick();
+  assert.match(p.text(), /Published automatically/);
+  Object.defineProperty(p.document, 'hidden', { configurable: true, value: true });
+  p.document.dispatchEvent(new p.window.Event('visibilitychange'));
+  assert.equal(p.timers.size, 0);
+  Object.defineProperty(p.document, 'hidden', { configurable: true, value: false });
+  p.document.dispatchEvent(new p.window.Event('visibilitychange'));
+  assert.equal(p.timers.size, 1);
+  await p.route('#/'); assert.equal(p.timers.size, 0);
+});
+
+test('status refresh preserves review notes on network errors and removes staff controls after session expiry', async () => {
+  const version = liveRelease('complete'); const api = liveApi(version);
+  const p = await page('#/staff/queue/42', undefined, api);
+  await p.input('#review-note', 'Unfinished review note');
+  const original = api.request;
+  api.request = async (method, path, body) => path === '/me' ? { status: 503, body: { error: 'Offline' } } : original(method, path, body);
+  await p.tick();
+  assert.match(p.text(), /Status could not refresh/);
+  assert.equal(p.document.querySelector('#review-note').value, 'Unfinished review note');
+  api.request = original; api.account = null; await p.tick();
+  assert.equal(p.document.querySelector('[data-focus-key="decision:approve"]'), null);
+  assert.match(p.text(), /Sign in with a moderator/);
+});
+
+test('failed real uploads retain local images and description and forward the complete draft', async () => {
+  const version = liveRelease(); const api = liveApi(version, 'player');
+  const memory = new Map([['cinnabar.marketplace.draft.creator', JSON.stringify({ name: 'Upload test', slug: 'upload-test',
+    summary: 'A complete live upload fixture.', description: 'Long description retained', version: '1.0.0', category: 'Interface',
+    license: 'MIT', notes: 'Initial release', source: '', gallery: [{ url: 'data:image/png;base64,AQID', caption: 'HUD', alt: 'Coordinates' }] })]]);
+  let uploaded;
+  api.submit = async (fields, file, gallery) => { uploaded = { fields, file, gallery }; return { status: 413, body: { error: 'Upload rejected. Resize and retry.' } }; };
+  const p = await page('#/submit', memory, api);
+  await p.click(p.document.querySelector('[data-focus-key="step:release"]'));
+  const input = p.document.querySelector('input[type=file]');
+  Object.defineProperty(input, 'files', { value: [{ name: 'test.wasm', size: 8,
+    arrayBuffer: async () => Uint8Array.from([0,97,115,109,13,0,1,0]).buffer }] });
+  input.dispatchEvent(new p.window.Event('change'));
+  for (let i = 0; i < 20 && !p.text().includes('syntax checked'); i++) { await new Promise(resolve => setTimeout(resolve, 5)); await settle(); }
+  await p.click(p.document.querySelector('[data-focus-key="step:checks"]'));
+  p.document.querySelector('#distribution-rights').checked = true;
+  p.document.querySelector('form').dispatchEvent(new p.window.Event('submit', { bubbles: true, cancelable: true })); await settle();
+  assert.match(p.document.querySelector('#feedback').textContent, /Resize and retry/);
+  assert.equal(uploaded.fields.license, 'MIT'); assert.equal(uploaded.fields.notes, 'Initial release');
+  assert.equal(uploaded.gallery[0].alt, 'Coordinates');
+  await p.click(p.document.querySelector('[data-focus-key="step:project"]'));
+  assert.equal(p.document.querySelector('#draft-description').value, 'Long description retained');
+  await p.click(p.document.querySelector('[data-focus-key="step:media"]'));
+  assert.equal(p.document.querySelectorAll('.media-item').length, 1);
 });

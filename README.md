@@ -81,17 +81,25 @@ account-specific library and creator draft, component checks, and staff review,
 reports, role and audit screens. `/marketplace/` serves the same hash application
 for existing preview links. Both pages share the download site's header.
 
-The renderer deliberately selects `marketplace.backend = "mock"`. A banner
-identifies fictional listings/accounts; the account chooser is preview-only.
-Selections and submissions stay in local storage. Images are re-encoded local
-previews. Drafts do not retain component bytes: reselect the file after reloading.
+The normal build selects `marketplace.backend = "http"` and uses the API origin
+from the pinned bridge contract. Deploy/configure the marketplace API before
+merging this website rollout. Failed requests show recovery controls and never
+fall back to fictional data. For a labelled local preview, run
+`python3 render.py --marketplace-backend mock`; sample accounts appear only there.
 
-The HTTP adapter retains Microsoft sign-in, credentials, CSRF and multipart
-uploads. Its origin comes from the pinned bridge contract. The API currently lacks
-image publication and library removal; the interface does not send unsupported
-image uploads or claim those actions succeeded in HTTP mode. Server malware/AI
-scanning and automatic publication are explicitly unavailable. See the service
-acceptance requirements in [docs/marketplace.md](docs/marketplace.md).
+The HTTP adapter uses Microsoft sign-in, credentials, CSRF and multipart component
+and image uploads. Captions, alt text, descriptions, category, license and release
+notes are versioned by the API. Prepared raster derivatives are uploaded as files;
+pending screenshots use authenticated creator/staff routes. Drafts stay local and
+do not retain component bytes: reselect the file after reloading.
+
+Your projects and the review workspace refresh server scan/publication states every
+ten seconds while visible. Staff notes survive refreshes and failed requests.
+Approval requires the API's current readiness result; AI flags require an explanation.
+Staff can request rescans and administrators can manage project-specific creator
+trust. The server authorizes every action and publishes eligible established updates.
+Library removal remains unavailable in HTTP mode. See [docs/marketplace.md](docs/marketplace.md)
+for integration, local verification and rollout requirements.
 
 Permission labels/types come from the pinned client's `grants.rs` through
 `source.json`. Command diffs include exact added/removed values; unsupported

@@ -166,7 +166,7 @@ class RenderTests(unittest.TestCase):
         grants.write_text(grants.read_text(encoding="utf-8").replace('permission("HUD",', 'permission("Fixture HUD",'), encoding="utf-8")
         RENDER.build(self.repository, self.output)
         config = self.config_from_output()
-        self.assertEqual(config["marketplace"], {"backend": "mock", "api_url": "https://fixture-api.invalid/v1"})
+        self.assertEqual(config["marketplace"], {"backend": "http", "api_url": "https://fixture-api.invalid/v1"})
         caps = (self.output / "marketplace-capabilities.js").read_text(encoding="utf-8")
         self.assertIn('"label": "Fixture HUD"', caps)
         page = (self.output / "mods/index.html").read_text(encoding="utf-8")
@@ -186,6 +186,13 @@ class RenderTests(unittest.TestCase):
         text = (self.repository / RENDER.INPUTS["mod_grants"]).read_text(encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "unsupported grant type"):
             RENDER.capability_descriptors(text.replace('pub hud: bool,', 'pub hud: u64,'))
+
+    def test_preview_backend_requires_an_explicit_build_option(self):
+        """Production targets the shared API; mock data stays an intentional local preview."""
+        RENDER.build(self.repository, self.output, marketplace_backend="mock")
+        self.assertEqual(self.config_from_output()["marketplace"]["backend"], "mock")
+        with self.assertRaisesRegex(ValueError, "marketplace backend"):
+            RENDER.build(self.repository, self.output, marketplace_backend="other")
 
 
 if __name__ == "__main__":

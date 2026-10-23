@@ -268,12 +268,52 @@ test('the live client sends the session cookie, repeats the CSRF token and uploa
   assert.equal(calls[2].assigned, 'https://api.test/v1/auth/microsoft/start?return_to=' + encodeURIComponent(location.href));
 });
 
-test('the live adapter refuses descriptions the current API would silently truncate', async () => {
+test('the live adapter refuses oversized descriptions while retaining the draft', async () => {
   const { createHttpApi } = require('../marketplace-http.js');
   let sent = false;
   const client = createHttpApi('https://api.test/v1', async () => { sent = true; }, {});
-  const result = await client.submit({ description: 'x'.repeat(2001) }, new File(['data'], 'mod.wasm'));
+  const result = await client.submit({ description: 'x'.repeat(40001) }, new File(['data'], 'mod.wasm'));
   assert.equal(result.status, 422);
   assert.match(result.body.error, /draft has been retained/);
   assert.equal(sent, false);
+});
+
+test('live uploads send prepared image bytes, captions and alt text without fetching arbitrary URLs', async () => {
+  const { createHttpApi } = require('../marketplace-http.js');
+  const calls = [];
+  const client = createHttpApi('https://api.test/v1', async (url, init) => {
+    calls.push({ url, init }); return { status: 200, json: async () => ({ id: '7', gallery: [] }) };
+  }, {});
+  const file = new File(['component'], 'mod.wasm');
+  const fields = { description: 'd'.repeat(40000), license: 'MIT', notes: 'Release notes' };
+  assert.equal((await client.submit(fields, file, [{ url: 'data:image/png;base64,AQID', caption: 'HUD screenshot', alt: 'Coordinates in the top left' }])).status, 200);
+  const form = calls[0].init.body;
+  assert.deepEqual(JSON.parse(form.get('listing')), fields);
+  assert.deepEqual(JSON.parse(form.get('image_metadata')), [{ caption: 'HUD screenshot', alt: 'Coordinates in the top left' }]);
+  assert.deepEqual([...new Uint8Array(await form.get('images').arrayBuffer())], [1, 2, 3]);
+  assert.equal(form.get('images').type, 'image/png');
+  assert.equal((await client.submit({}, file, [{ url: 'https://attacker.test/secret.png' }])).status, 422);
+  assert.equal((await client.submit({}, file, Array(5).fill({ url: 'data:image/png;base64,AQID' }))).status, 422);
+  assert.equal(calls.length, 1);
+});
+
+test('the HTTP adapter derives public and private media routes from digests and clears stale CSRF on signout', async () => {
+  const { createHttpApi } = require('../marketplace-http.js');
+  const sha256 = 'a'.repeat(64); const calls = [];
+  const client = createHttpApi('https://api.test/v1', async (url, init) => {
+    calls.push(init);
+    return { status: 200, json: async () => url.endsWith('/me') ? { csrf: calls.length === 1 ? 'token' : null, account: null }
+      : url.endsWith('/auth/signout') ? {} : [{ id: '42', gallery: [{ sha256, caption: 'Image', url: 'https://evil.test' }, { sha256: '../private' }] }] };
+  }, {});
+  await client.request('GET', '/me');
+  const privateView = await client.request('GET', '/me/mods');
+  assert.equal(privateView.body[0].gallery[0].url, 'https://api.test/v1/me/mods/42/media/' + sha256);
+  assert.equal(privateView.body[0].gallery[0].private, true);
+  assert.equal(privateView.body[0].gallery.length, 1);
+  assert.equal((await client.request('GET', '/mods')).body[0].gallery[0].url, 'https://api.test/v1/mods/media/' + sha256);
+  await client.request('POST', '/auth/signout');
+  await client.request('POST', '/mods/test/send');
+  assert.equal(calls[3].headers['X-Cinnabar-CSRF'], 'token');
+  assert.equal(calls[4].headers['X-Cinnabar-CSRF'], '');
+  assert.equal(client.fileUrl('../auth'), null);
 });

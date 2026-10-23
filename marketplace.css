@@ -1100,7 +1100,13 @@ main {
     grid-template-columns: 210px 1fr;
   }
 }
+.refresh-controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.scan-evidence { margin-block: 20px; }
+.scan-findings { padding-inline-start: 22px; overflow-wrap: anywhere; }
+.scan-evidence .facts, .release-detail .facts { overflow-wrap: anywhere; }
+.release-detail { padding-top: 24px; border-top: 1px solid var(--line); }
 @media (max-width: 760px) {
+  .refresh-controls { align-items: flex-start; flex-direction: column; }
   .shell {
     width: 100%;
   }

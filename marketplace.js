@@ -2,12 +2,13 @@
   'use strict';
   const M = window.CinnabarMarket;
   const C = window.CinnabarContent;
-  const config = (window.CINNABAR_DOWNLOADS || {}).marketplace || { backend: 'mock' };
+  const config = (window.CINNABAR_DOWNLOADS || {}).marketplace || {};
   const app = document.getElementById('app');
   const feedback = document.getElementById('feedback');
-  const backend = config.backend === 'http' && config.api_url
-    ? window.CinnabarMarketHttp.createHttpApi(config.api_url.replace(/\/$/, ''), window.fetch.bind(window), window.location)
-    : window.CinnabarMarketMock.createMockApi(safeStorage());
+  const backend = config.backend === 'mock' ? window.CinnabarMarketMock.createMockApi(safeStorage())
+    : config.backend === 'http' && config.api_url ? window.CinnabarMarketHttp.createHttpApi(config.api_url.replace(/\/$/, ''), window.fetch.bind(window), window.location)
+      : { backend: 'unavailable', request: async () => ({ status: 503, body: { error: 'Marketplace configuration could not load. Reload this page to retry.' } }),
+        signIn: () => announce('Marketplace configuration could not load. Reload this page before signing in.', true) };
   let session = { account: null, library: [] };
   let generation = 0;
   let query = '';
@@ -21,6 +22,12 @@
   let validationPending = false;
   let validationController = null;
   let mediaPending = false;
+  let submitting = false;
+  let uploadGeneration = 0;
+  let refreshTimer = null;
+  let refreshing = false;
+  let writes = 0;
+  const reviewNotes = new Map();
   const steps = ['project', 'media', 'release', 'checks'];
   const categories = ['Interface', 'Visuals', 'Camera', 'Utilities', 'Gameplay', 'Network'];
   const paths = {
@@ -82,8 +89,10 @@
 
   /** Keep transport failures distinct from empty successful responses. */
   async function call(method, path, body) {
+    if (method !== 'GET') writes++;
     try { return await backend.request(method, path, body); }
     catch (_) { return { status: 0, body: { error: 'Cannot reach the marketplace. Check your connection and retry.' } }; }
+    finally { if (method !== 'GET') writes--; }
   }
 
   /** Recover focus when a mutation replaces the currently focused subtree. */
@@ -92,9 +101,10 @@
     const previous = document.activeElement;
     const key = focusKey || previous?.getAttribute('data-focus-key');
     const hadFocus = app.contains(previous);
+    const selection = typeof previous?.selectionStart === 'number' ? [previous.selectionStart, previous.selectionEnd] : null;
     app.replaceChildren(node);
     const target = key && [...app.querySelectorAll('[data-focus-key]')].find(el => el.getAttribute('data-focus-key') === key && !el.disabled);
-    if (target) target.focus();
+    if (target) { target.focus(); if (selection && target.setSelectionRange) target.setSelectionRange(...selection); }
     else if (hadFocus) app.focus();
   }
 
@@ -105,9 +115,15 @@
   }
 
   /** Reflect server identity; preview account choices never appear in HTTP mode. */
-  async function loadSession() {
+  async function loadSession(expectedGeneration) {
     const response = await call('GET', '/me');
-    if (response.status !== 200) { session = { account: null, library: [] }; return response; }
+    if (expectedGeneration !== undefined && expectedGeneration !== generation) return { status: 0, stale: true, body: {} };
+    if (response.status !== 200) return response;
+    if (session.account?.xuid !== response.body.account?.xuid) {
+      validationController?.abort(); validationPending = false; mediaPending = false;
+      fileToken++; draft = null; draftOwner = null; reviewNotes.clear();
+      submitting = false; uploadGeneration++;
+    }
     session = response.body;
     session.library = Array.isArray(session.library) ? session.library : [];
     return response;
@@ -151,10 +167,12 @@
 
   /** End the session and discard in-memory artifacts on account changes. */
   async function signOut() {
+    generation++; window.clearTimeout(refreshTimer);
     const result = await call('POST', '/auth/signout');
-    if (result.status !== 200) return announce(result.body.error, true);
+    if (result.status !== 200) { await render(); return announce(result.body.error, true); }
     validationController?.abort(); validationPending = false; mediaPending = false;
     fileToken++; draft = null; draftOwner = null;
+    reviewNotes.clear();
     await loadSession(); location.hash = '#/'; await render(); announce('Signed out.');
   }
 
@@ -166,6 +184,47 @@
         cap ? h('span', { class: 'muted' }, cap.description) : null,
         name === 'commands' && grants?.commands ? h('p', { class: 'permission-value' }, grants.commands.join(', ')) : null);
     }) : h('li', { class: 'muted' }, 'No optional permissions declared.'));
+  }
+
+  /** Render server-backed scan evidence as inert text, including explicit pending/error states. */
+  function scanEvidence(version) {
+    if (!version.scan) return h('div', { class: 'notice' }, h('b', {}, backend.backend === 'mock' ? 'Server scan evidence is not connected.' : 'Scan evidence is unavailable.'),
+      h('p', {}, backend.backend === 'mock' ? 'Preview decisions simulate review. They do not certify code safety.' : 'Refresh to retrieve the release status. Missing evidence cannot authorize approval.'));
+    const scan = version.scan;
+    const report = scan.report;
+    const verdict = report?.ai?.verdict;
+    const state = C.releaseState(version);
+    const status = h('section', { class: 'scan-evidence', 'aria-label': 'Server scan evidence' },
+      h('div', { class: 'row between' }, h('h3', {}, 'Release checks'), h('span', { class: 'tag ' + state.tone }, state.label)),
+      h('div', { class: 'scan-status' },
+        h('div', {}, h('span', {}, 'Scan job'), h('span', {}, scan.state)),
+        h('div', {}, h('span', {}, 'Component & media validation'), h('span', {}, report?.deterministic || 'Pending')),
+        h('div', {}, h('span', {}, 'AI-assisted review'), h('span', {}, verdict === 'clear' ? 'No concerns flagged' : verdict === 'flag' ? (version.status === 'approved' ? 'Flagged · staff-reviewed' : 'Flagged for staff review') : verdict === 'error' ? 'Failed · publication held' : 'Pending')),
+        h('div', {}, h('span', {}, 'Publication'), h('span', {}, version.publication || 'Eligibility evaluated by the API'))),
+      h('p', { class: 'small muted' }, 'Static checks and AI triage do not certify safety. Cinnabar asks before enabling permissions.'));
+    for (const [name, findings] of [['Validation findings', report?.findings], ['AI findings', report?.ai?.findings]]) {
+      if (Array.isArray(findings) && findings.length) status.append(h('h4', { class: 'gap' }, name), h('ul', { class: 'scan-findings' }, findings.slice(0, 32).map(text => h('li', {}, String(text)))));
+    }
+    if (report) status.append(h('dl', { class: 'facts small' }, h('dt', {}, 'Validator / policy'), h('dd', {}, [report.validator, report.policy].filter(Boolean).join(' · ')),
+      h('dt', {}, 'AI model / prompt'), h('dd', {}, [report.ai?.model, report.ai?.prompt].filter(Boolean).join(' · ')),
+      h('dt', {}, 'Completed'), h('dd', {}, scan.completed_at ? new Date(scan.completed_at).toLocaleString() : 'Pending')));
+    return status;
+  }
+
+  /** Display only safe API-derived or locally re-encoded gallery images; private previews include credentials. */
+  function galleryView(mod) {
+    const gallery = h('div');
+    const images = (Array.isArray(mod.gallery) ? mod.gallery : []).filter(item => C.imageUrl(item.url));
+    if (!images.length) return h('div', { class: 'empty' }, h('p', {}, 'No screenshots uploaded.'));
+    const error = h('p', { class: 'notice', hidden: true, role: 'status' }, 'This image is unavailable. Refresh your session or the release status to retry.');
+    const picture = h('img', { class: 'gallery-picture', alt: images[0].alt || '', referrerpolicy: 'no-referrer',
+      crossorigin: images[0].private ? 'use-credentials' : null,
+      onerror: () => { picture.hidden = true; error.hidden = false; } });
+    const caption = h('p', { class: 'gallery-caption' });
+    const show = image => { picture.hidden = false; error.hidden = true; picture.alt = image.alt || ''; picture.src = C.imageUrl(image.url); caption.textContent = image.caption || ''; };
+    show(images[0]);
+    gallery.append(picture, error, caption, h('div', { class: 'gallery-thumbs' }, images.map((image, i) => button(image.caption || 'Image ' + (i + 1), () => show(image), 'btn quiet', 'gallery:' + i))));
+    return gallery;
   }
 
   /** Add to the account library without claiming an installation or runtime grant. */
@@ -274,10 +333,11 @@
       h('section', { class: 'sidebox' }, h('div', { class: 'row between' }, h('h2', {}, mod.name + ' ' + mod.version), h('span', { class: 'tag' }, 'Free')),
         h('p', { class: 'small muted' }, 'Your game asks before allowing permissions.'), add,
         h('dl', { class: 'fact-list' }, h('div', {}, h('dt', {}, 'Artifact'), h('dd', {}, 'Wasm component')),
-          h('div', {}, h('dt', {}, 'Review'), h('dd', {}, mod.reviewed_by || 'Not provided')),
+          h('div', {}, h('dt', {}, 'Publication'), h('dd', {}, mod.publication === 'automatic' ? 'Automatic · checks completed' : mod.reviewed_by || 'Not provided')),
           h('div', {}, h('dt', {}, 'License'), h('dd', {}, mod.license || 'Not provided')))),
       h('section', { class: 'sidebox' }, h('h2', {}, 'Requested permissions'), permissions(mod, mod.grants),
         h('p', { class: 'rule small muted' }, 'Requests are not grants. Review every permission in Cinnabar before enabling a mod.')),
+      M.atLeast(session.account, 'moderator') && mod.version_id ? h('a', { class: 'btn quiet', href: '#/staff/queue/' + mod.version_id }, 'Review this release') : null,
       button('Report a concern', () => reportForm(mod, content), 'btn quiet', 'project:report'));
     const buttons = [];
     /** Keep the selected information tab local so it does not discard catalogue state. */
@@ -287,22 +347,14 @@
         content.replaceChildren(h('h2', {}, 'Releases'), h('div', { class: 'table-wrap gap' }, h('table', {},
           h('thead', {}, h('tr', {}, h('th', {}, 'Version'), h('th', {}, 'Status'), h('th', {}, 'Reviewed by'), h('th', {}, 'Release notes'))),
           h('tbody', {}, (mod.history || []).map(version => h('tr', {}, h('td', {}, version.version),
-            h('td', {}, version.pulled ? 'Pulled' : 'Approved'), h('td', {}, (version.reviewers || []).join(', ')), h('td', {}, version.notes || 'Not provided')))))));
+            h('td', {}, version.pulled ? 'Pulled' : version.publication === 'automatic' ? 'Published automatically' : 'Approved'),
+            h('td', {}, (version.reviewers || []).join(', ') || (version.publication === 'automatic' ? 'Automatic checks' : 'Not provided')), h('td', {}, version.notes || 'Not provided')))))));
       } else if (tab === 'permissions') {
         content.replaceChildren(h('h2', {}, 'Permissions & checks'), permissions(mod, mod.grants),
-          h('div', { class: 'notice gap' }, 'Approval records and browser syntax checks are not malware scans. Server scanning is not connected in this preview.'),
+          scanEvidence(mod),
           h('dl', { class: 'facts' }, h('dt', {}, 'SHA-256'), h('dd', {}, mod.sha256), h('dt', {}, 'Size'), h('dd', {}, mod.bytes + ' bytes')));
       } else {
-        const gallery = h('div');
-        const images = (Array.isArray(mod.gallery) ? mod.gallery : []).filter(item => C.imageUrl(item.url));
-        if (images.length) {
-          const picture = h('img', { class: 'gallery-picture', src: C.imageUrl(images[0].url), alt: images[0].alt || '', referrerpolicy: 'no-referrer' });
-          const caption = h('p', { class: 'gallery-caption' }, images[0].caption || '');
-          gallery.append(picture, caption, h('div', { class: 'gallery-thumbs' }, images.map((item, i) => button(item.caption || 'Image ' + (i + 1), () => {
-            picture.src = C.imageUrl(item.url); picture.alt = item.alt || ''; caption.textContent = item.caption || '';
-          }, 'btn quiet', 'gallery:' + i))));
-        } else gallery.append(h('div', { class: 'empty' }, h('p', {}, 'No screenshots uploaded.')));
-        content.replaceChildren(gallery, h('p', { class: 'gap soft' }, mod.summary), C.markdown(document, mod.description));
+        content.replaceChildren(galleryView(mod), h('p', { class: 'gap soft' }, mod.summary), C.markdown(document, mod.description));
         const source = C.externalUrl(mod.source);
         if (source) content.append(h('a', { class: 'btn quiet gap', href: source, rel: 'noopener noreferrer' }, 'View source'));
       }
@@ -401,6 +453,7 @@
   async function editor(token) {
     if (!session.account) return mount(token, h('section', { class: 'empty' }, h('h2', {}, 'Give your mod a home.'),
       h('p', {}, 'Sign in to prepare a project and submit a release.'), button(backend.backend === 'mock' ? 'Choose a preview account' : 'Sign in with Microsoft', signIn, 'btn primary', 'editor:signin')));
+    if (submitting) return mount(token, h('section', { class: 'empty', role: 'status' }, h('h2', {}, 'Uploading your release…'), h('p', {}, 'Keep this tab open. Your draft will stay available if the upload fails.')));
     loadDraft();
     const form = h('form', { class: 'editor', novalidate: true });
     const panel = h('div');
@@ -415,7 +468,7 @@
     /** Bind a labelled input to the draft without replacing focused controls. */
     function field(key, label, type = 'text', hint = '') {
       const input = h(type === 'textarea' ? 'textarea' : 'input', { id: 'draft-' + key, name: key, type: type === 'textarea' ? null : type,
-        value: draft[key], maxlength: key === 'description' ? (backend.backend === 'http' ? 2000 : 40000) : key === 'summary' ? 140 : key === 'name' ? 64 : 2000,
+        value: draft[key], maxlength: key === 'description' ? 40000 : key === 'notes' ? 4000 : key === 'license' ? 128 : key === 'summary' ? 140 : key === 'name' ? 64 : 2000,
         oninput: event => { draft[key] = event.target.value; if (key === 'name') previewName.textContent = draft.name; if (key === 'summary') previewSummary.textContent = draft.summary; } });
       return h('label', { class: 'field', for: 'draft-' + key }, label, input, hint ? h('span', { class: 'hint' }, hint) : null);
     }
@@ -438,7 +491,8 @@
           mediaPending = true;
           input.disabled = true;
           try {
-            if (current.gallery.length + files.length > 12) throw new Error('A project can have at most 12 images.');
+            const max = backend.backend === 'http' ? 4 : 12;
+            if (current.gallery.length + files.length > max) throw new Error('A release can have at most ' + max + ' images.');
             const images = [];
             for (const file of files) images.push(await readImage(file));
             if (owner !== draftOwner || current !== draft) return;
@@ -448,7 +502,8 @@
           finally { if (owner === draftOwner && current === draft) { mediaPending = false; render(); } }
         } });
       panel.append(h('div', { class: 'upload-zone' }, icon('upload'), h('b', {}, mediaPending ? 'Preparing images…' : 'Choose project images'),
-        h('span', { class: 'small muted' }, 'PNG, JPEG or WebP · up to 8 MiB and 24 megapixels each'), input));
+        h('span', { class: 'small muted' }, 'PNG, JPEG or WebP · up to 8 MiB and 24 megapixels each'), input),
+        h('p', { class: 'hint' }, backend.backend === 'http' ? 'Up to four prepared images are uploaded as files. Captions and alt text are saved with this release.' : 'Up to twelve images in the local preview.'));
       const media = h('div', { class: 'media-strip' }, draft.gallery.map((image, index) => {
         const caption = h('input', { value: image.caption, maxlength: 140, 'aria-label': 'Caption for image ' + (index + 1), oninput: event => { image.caption = event.target.value; } });
         const alt = h('input', { value: image.alt, maxlength: 300, 'aria-label': 'Alt text for image ' + (index + 1), oninput: event => { image.alt = event.target.value; } });
@@ -456,7 +511,6 @@
           button('Remove', () => { draft.gallery.splice(index, 1); render(); }, 'quiet', 'image:remove:' + index)),
         h('label', { class: 'field' }, 'Caption', caption), h('label', { class: 'field' }, 'Alt text', alt));
       })); panel.append(media);
-      if (backend.backend === 'http') panel.append(h('div', { class: 'notice' }, 'This API does not support project image uploads yet. Keep images in your local draft or remove them before submitting.'));
     } else if (step === 'release') {
       panel.append(h('h2', {}, 'Add a release.'), h('div', { class: 'upload-zone' }, icon('upload'), h('b', {}, validationPending ? 'Checking component…' : 'Choose your Wasm component'),
         h('span', { class: 'small muted' }, 'Portable .wasm component · up to 16 MiB'), h('input', { type: 'file', accept: '.wasm', 'aria-label': 'Choose mod component',
@@ -468,39 +522,48 @@
       const checked = Boolean(draft.file && draft.parsed && draft.check);
       panel.append(h('h2', {}, 'Ready when the checks are.'), h('p', { class: 'small muted' }, 'Established creators can publish automatically only when the service confirms eligibility and completes the required checks.'),
         h('div', { class: 'scan-status' }, h('div', {}, h('span', {}, 'Browser component syntax'), h('span', { class: checked ? 'good' : 'warning' }, checked ? 'Passed' : validationPending ? 'Checking…' : 'Choose a release file')),
-          h('div', {}, h('span', {}, 'Server malware / AI review'), h('span', { class: 'muted' }, 'Not connected')),
-          h('div', {}, h('span', {}, 'Automatic publication'), h('span', { class: 'muted' }, 'Unavailable')),
-          h('div', {}, h('span', {}, 'Publication route'), h('span', {}, 'Submit for review'))),
+          h('div', {}, h('span', {}, 'Server validation & AI triage'), h('span', { class: 'muted' }, backend.backend === 'http' ? 'Queued after upload' : 'Not connected')),
+          h('div', {}, h('span', {}, 'Automatic publication'), h('span', { class: 'muted' }, backend.backend === 'http' ? 'Evaluated after server checks' : 'Unavailable')),
+          h('div', {}, h('span', {}, 'Publication route'), h('span', {}, backend.backend === 'http' ? 'Quarantine → checks → publication or review' : 'Submit for review'))),
         h('div', { class: 'notice gap' }, backend.backend === 'mock' ? 'Preview submissions stay in this browser. Staff decisions simulate publication; they do not distribute code.' : 'The service must independently validate and review the artifact. A browser check cannot authorize publication.'),
         h('label', { class: 'row gap small' }, h('input', { type: 'checkbox', id: 'distribution-rights' }), 'I have permission to distribute this code and these images.'));
     }
     form.append(panel, h('div', { class: 'editor-actions' }, button('Save draft', saveDraft, 'btn quiet', 'draft:save'),
-      h('button', { type: 'submit', class: 'btn primary', 'data-focus-key': 'draft:continue', disabled: validationPending || mediaPending },
-        step === 'checks' ? 'Submit for review' : ['Continue to images', 'Continue to release', 'Review checks'][steps.indexOf(step)])));
+      h('button', { type: 'submit', class: 'btn primary', 'data-focus-key': 'draft:continue', disabled: validationPending || mediaPending || submitting },
+        submitting ? 'Uploading…' : step === 'checks' ? (backend.backend === 'http' ? 'Upload release' : 'Submit for review') : ['Continue to images', 'Continue to release', 'Review checks'][steps.indexOf(step)])));
     form.addEventListener('submit', async event => {
       event.preventDefault();
-      if (validationPending || mediaPending) return announce('Wait for the current file check to finish.', true);
+      if (validationPending || mediaPending || submitting) return announce('Wait for the current upload or file check to finish.', true);
       if (step !== 'checks') { step = steps[steps.indexOf(step) + 1]; render(); return; }
       if (!draft.file || !draft.parsed || !draft.check) { step = 'release'; await render(); return announce('Choose a valid component file first.', true); }
       if (!document.getElementById('distribution-rights').checked) return announce('Confirm your distribution rights before submitting.', true);
       const fields = { name: draft.name.trim(), slug: draft.slug.trim(), summary: draft.summary.trim(), description: draft.description,
-        version: draft.version.trim(), source: draft.source.trim(), reach: M.reachOf(draft.parsed.grants) };
+        version: draft.version.trim(), source: draft.source.trim(), category: draft.category, license: draft.license, notes: draft.notes,
+        reach: M.reachOf(draft.parsed.grants) };
       const errors = M.validateListing(fields);
       if (Object.keys(errors).length) { step = 'project'; await render(); announce(Object.values(errors).join(' '), true); return; }
-      if (backend.backend === 'http' && draft.gallery.length) return announce('This API cannot publish images yet. Keep a separate draft or remove the images before submitting.', true);
       const submit = form.querySelector('[type=submit]'); submit.disabled = true;
+      submitting = true; submit.textContent = 'Uploading…';
+      const upload = ++uploadGeneration;
+      const controls = [...form.querySelectorAll('input, textarea, select, button')].map(control => [control, control.disabled]);
+      controls.forEach(([control]) => { control.disabled = true; });
       const owner = draftOwner;
       let result;
       try {
-        result = backend.submit ? await backend.submit(fields, draft.file) : await call('POST', '/submissions', {
+        result = backend.submit ? await backend.submit(fields, draft.file, draft.gallery) : await call('POST', '/submissions', {
           ...fields, category: draft.category, license: draft.license, notes: draft.notes, gallery: draft.gallery,
           grants: draft.parsed.grants || {}, sha256: draft.parsed.sha256, bytes: draft.file.size,
         });
       } catch (_) { result = { status: 0, body: { error: 'Upload failed. Your draft is still here; retry when connected.' } }; }
-      if (owner !== draftOwner) return;
-      submit.disabled = false;
-      if (result.status !== 200) return announce(result.body.error, true);
-      announce(backend.backend === 'mock' ? 'Preview release submitted for review. No file was distributed.' : 'Release submitted for server review.');
+      if (upload !== uploadGeneration || owner !== draftOwner) return;
+      submitting = false;
+      controls.forEach(([control, disabled]) => { control.disabled = disabled; });
+      submit.disabled = false; submit.textContent = backend.backend === 'http' ? 'Upload release' : 'Submit for review';
+      if (result.status !== 200) {
+        if (M.parseRoute(location.hash).view === 'submit') await render();
+        return announce(result.body.error, true);
+      }
+      announce(backend.backend === 'mock' ? 'Preview release submitted for review. No file was distributed.' : 'Release uploaded to quarantine. Follow its checks and publication status in Your projects.');
       safeStorage().removeItem('cinnabar.marketplace.draft.' + owner);
       draft = null; step = 'project'; location.hash = '#/mine';
     });
@@ -509,14 +572,20 @@
   }
 
   /** Display immutable submitted releases and any staff note without fabricating scans. */
-  async function mine(token) {
+  async function mine(token, route) {
     if (!session.account) return editor(token);
     const result = await call('GET', '/me/mods');
     if (result.status !== 200) return mount(token, failure(result.body.error));
+    const selected = result.body.find(version => String(version.id) === route.id) || result.body[0];
+    const detail = selected ? h('section', { class: 'release-detail gap' }, h('h2', {}, selected.name + ' ' + selected.version),
+      scanEvidence(selected), selected.note ? h('p', { class: 'notice gap' }, 'Staff note: ' + selected.note) : null,
+      h('div', { class: 'detail-layout gap' }, h('div', {}, galleryView(selected), C.markdown(document, selected.description)),
+        h('div', {}, h('h3', {}, 'Requested permissions'), permissions(selected, selected.grants),
+          h('dl', { class: 'facts' }, h('dt', {}, 'SHA-256'), h('dd', {}, selected.sha256))))) : null;
     mount(token, h('section', {}, h('div', { class: 'editor-heading' }, h('h1', {}, 'Your projects'), h('a', { href: '#/submit', class: 'btn primary' }, 'Prepare a release')),
-      result.body.length ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Project', 'Version', 'Status', 'Staff note'].map(label => h('th', {}, label)))),
-        h('tbody', {}, result.body.map(version => h('tr', {}, h('td', {}, version.name), h('td', {}, version.version),
-          h('td', {}, version.pulled ? 'Pulled' : version.status), h('td', {}, version.note || '—')))))) : h('p', { class: 'empty' }, 'No submitted releases yet. Your draft is available in Publish a mod.')));
+      refreshControls(), result.body.length ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Project', 'Version', 'Progress', 'Staff note'].map(label => h('th', {}, label)))),
+        h('tbody', {}, result.body.map(version => h('tr', {}, h('td', {}, h('a', { href: '#/mine/' + version.id }, version.name)), h('td', {}, version.version),
+          h('td', { class: C.releaseState(version).tone }, C.releaseState(version).label), h('td', {}, version.note || '—')))))) : h('p', { class: 'empty' }, 'No submitted releases yet. Your draft is available in Publish a mod.'), detail));
   }
 
   /** Require staff identity and preserve each failed workspace request as an error state. */
@@ -544,19 +613,24 @@
 
   /** Build review evidence and role-checked actions for the selected exact release. */
   async function reviewQueue(body, queue, selected, token) {
-    if (!queue.length) { body.append(h('p', { class: 'empty' }, 'No versions are waiting for review.')); return; }
+    body.append(refreshControls());
+    if (!queue.length && !selected) { body.append(h('p', { class: 'empty' }, 'No versions are waiting for review.')); return; }
     const id = selected || queue[0].id;
     const result = await call('GET', '/staff/versions/' + encodeURIComponent(id));
     if (token !== generation) return;
     if (result.status !== 200) { body.append(failure(result.body.error)); return; }
     const version = result.body;
     const diff = permissionDiff(version);
-    const notes = h('textarea', { id: 'review-note', placeholder: 'Explain the decision or requested change.', maxlength: 2000 });
+    const noteKey = session.account.xuid + ':' + version.id;
+    const notes = h('textarea', { id: 'review-note', 'data-focus-key': 'review:note', value: reviewNotes.get(noteKey) || '',
+      placeholder: 'Explain the decision or requested change.', maxlength: 1000,
+      oninput: event => { reviewNotes.set(noteKey, event.target.value); updateApprove(); } });
     const approve = M.can(session.account, 'approve', { version });
     if (approve.ok && version.previous && version.grants?.commands?.length && !version.previous.grants && !diff?.commands) {
       approve.ok = false;
       approve.reason = 'This API does not provide the previous command values. Upgrade the API before approving command-bearing updates.';
     }
+    if (approve.ok && backend.backend === 'http') Object.assign(approve, C.scanApproval(version));
     const allowed = M.can(session.account, 'review', { version });
     const decisionStatus = h('p', { class: 'error', role: 'alert' });
     /** Commit a review decision only to the selected version, retaining a failed note. */
@@ -565,20 +639,43 @@
       const response = await call('POST', '/staff/versions/' + encodeURIComponent(version.id) + '/decision', { decision, note: notes.value });
       control.disabled = false;
       if (response.status !== 200) { decisionStatus.textContent = response.body.error; notes.focus(); return; }
-      location.hash = '#/staff/queue'; await render(); announce('Review decision recorded for ' + version.name + ' ' + version.version + '.');
+      reviewNotes.delete(noteKey);
+      location.hash = '#/staff/queue/' + version.id; await render(); announce('Review decision recorded for ' + version.name + ' ' + version.version + '.');
     }
     const decisions = h('div', { class: 'stack gap' });
+    let approvalControl;
+    /** A flagged finding needs an explicit explanation as well as the server's ready state. */
+    function updateApprove() {
+      if (approvalControl) approvalControl.disabled = !approve.ok || (version.scan?.report?.ai?.verdict === 'flag' && !notes.value.trim());
+    }
     for (const [decision, label] of [['changes', 'Request changes'], ['approve', 'Approve release'], ['reject', 'Reject release']]) {
       const control = button(label, () => decide(decision, control), decision === 'changes' ? 'btn primary' : 'btn quiet', 'decision:' + decision);
       control.disabled = decision === 'approve' ? !approve.ok : !allowed.ok;
+      if (decision === 'approve') approvalControl = control;
       decisions.append(control);
+    }
+    updateApprove();
+    const trust = h('div');
+    if (backend.backend === 'http') {
+      trust.append(h('p', { class: 'small gap' }, version.trust?.trusted
+        ? 'Established creator for this project until ' + new Date(version.trust.expires_at).toLocaleDateString() + '.' : 'Automatic publication has not been established for this project.'));
+      if (M.atLeast(session.account, 'admin') && version.creator !== session.account.xuid) {
+        const key = noteKey + ':trust';
+        const reason = h('input', { id: 'trust-reason', value: reviewNotes.get(key) || '', maxlength: 500, 'data-focus-key': 'review:trust-reason',
+          oninput: event => reviewNotes.set(key, event.target.value) });
+        trust.append(h('label', { class: 'field gap', for: 'trust-reason' }, 'Reason for changing creator trust', reason),
+          button(version.trust?.trusted ? 'Revoke project trust' : 'Establish project trust', async () => {
+            const result = await call('POST', '/staff/mods/' + encodeURIComponent(version.slug) + '/trust', { trusted: !version.trust?.trusted, reason: reason.value });
+            if (result.status !== 200) { decisionStatus.textContent = result.body.error; reason.focus(); return; }
+            reviewNotes.delete(key); await render(); announce('Project trust updated. The API still checks each release before publishing.');
+          }, 'btn quiet', 'review:trust'), h('p', { class: 'hint' }, 'Requires a recent sign-in and a human-approved release. Trust is scoped to this creator and project.'));
+      }
     }
     const review = h('div', {}, h('div', { class: 'review-top' }, h('div', {}, h('h2', {}, version.name + ' ' + version.version),
       h('p', { class: 'small muted' }, 'by ' + version.creator_name + (version.previous ? ' · Compare with ' + version.previous.version : ' · First release'))),
-      h('span', { class: 'tag warning' }, 'Human review required')),
+      h('span', { class: 'tag ' + C.releaseState(version).tone }, C.releaseState(version).label)),
     h('div', { class: 'review-columns' }, h('div', {},
-      h('div', { class: 'notice' }, h('b', {}, 'Server scan evidence is not connected.'),
-        h('p', {}, 'The permission diff below is deterministic. Approval in the preview simulates a staff decision; it does not certify code safety.')),
+      scanEvidence(version), h('h3', { class: 'gap' }, 'Submitted description'), C.markdown(document, version.description), galleryView(version),
       h('h3', { class: 'gap' }, 'Requested permissions'), permissions(version, version.grants),
       diff ? h('section', { class: 'rule' }, h('h3', {}, 'Changes from ' + version.previous.version),
         h('p', { class: 'small gap' }, 'Added: ' + (diff.added.join(', ') || 'None')),
@@ -589,13 +686,20 @@
       h('dl', { class: 'facts' }, h('dt', {}, 'Artifact SHA-256'), h('dd', {}, version.sha256),
         h('dt', {}, 'Approvals'), h('dd', {}, version.approvals.map(person => person.gamertag || person.xuid).join(', ') || 'None'),
         h('dt', {}, 'Source'), h('dd', {}, C.externalUrl(version.source) ? h('a', { href: C.externalUrl(version.source), rel: 'noopener noreferrer' }, version.source) : 'Not linked'))),
-    h('aside', { class: 'verdict' }, h('h3', {}, 'Decision'), h('p', { class: 'small muted gap' }, approve.ok ? 'Compare the file, permissions and description before approving.' : approve.reason),
+    h('aside', { class: 'verdict' }, h('h3', {}, 'Decision'), h('p', { class: 'small muted gap' }, approve.ok ? 'Compare the file, permissions and description before approving. Explain any AI flags in your note.' : approve.reason),
+      backend.fileUrl && backend.fileUrl(version.id) ? h('a', { class: 'btn quiet gap', href: backend.fileUrl(version.id), rel: 'noopener noreferrer', target: '_blank' }, 'Download quarantined component') : null,
       h('label', { class: 'field gap', for: 'review-note' }, 'Note to creator', notes), decisions, decisionStatus,
+      backend.backend === 'http' && version.status === 'submitted' ? button('Request a rescan', async () => {
+        const response = await call('POST', '/staff/versions/' + encodeURIComponent(version.id) + '/rescan');
+        if (response.status !== 200) { decisionStatus.textContent = response.body.error; return; }
+        await render(); announce('New scan queued. Earlier scan claims and approvals were invalidated.');
+      }, 'btn quiet', 'review:rescan') : null,
+      trust,
       h('p', { class: 'small muted gap' }, 'No self-review. Every decision is tied to this version.'))));
     body.append(h('div', { class: 'review-layout' }, h('aside', { class: 'queue' }, queue.map(entry => h('a', {
       href: '#/staff/queue/' + entry.id, class: entry.id === id ? 'active' : '', 'data-focus-key': 'queue:' + entry.id,
     }, h('strong', {}, entry.name + ' ' + entry.version), h('span', { class: 'tag' }, M.RUNGS[entry.reach]?.label || 'Unknown'),
-    h('p', { class: 'small muted' }, entry.creator_name)))), review));
+    h('p', { class: 'small muted' }, entry.creator_name), h('p', { class: 'small' }, C.releaseState(entry).label)))), review));
   }
 
   /** Keep report triage and revocation actions visibly distinct from review approvals. */
@@ -642,8 +746,43 @@
       : h('p', { class: 'empty' }, 'No audit entries.'));
   }
 
+  /** Keep refresh outcomes local to status workspaces without announcing background successes repeatedly. */
+  function refreshControls() {
+    return backend.backend === 'http' ? h('div', { class: 'refresh-controls' },
+      h('p', { class: 'small muted refresh-note', role: 'status' }, 'Status refreshes every 10 seconds while this page is visible.'),
+      button('Refresh status', refreshCurrent, 'btn quiet', 'status:refresh')) : null;
+  }
+
+  /** Only creator and review status workspaces poll; hidden pages and navigation cancel their timers. */
+  function scheduleRefresh(token, route) {
+    window.clearTimeout(refreshTimer);
+    if (token !== generation || backend.backend !== 'http' || !session.account || document.hidden
+      || !(route.view === 'mine' || (route.view === 'staff' && route.tab === 'queue'))) return;
+    refreshTimer = window.setTimeout(refreshCurrent, 10000);
+  }
+
+  /** Refresh identity before release data; stale responses and expired sessions cannot retain staff controls. */
+  async function refreshCurrent() {
+    if (refreshing || document.hidden) return;
+    if (writes || submitting) { scheduleRefresh(generation, M.parseRoute(location.hash)); return; }
+    const token = generation;
+    refreshing = true;
+    const result = await loadSession(token);
+    refreshing = false;
+    if (token !== generation) return;
+    if (writes || submitting) { scheduleRefresh(generation, M.parseRoute(location.hash)); return; }
+    if (result.status !== 200) {
+      const message = app.querySelector('.refresh-note');
+      if (message) message.textContent = 'Status could not refresh. Existing details are unchanged; use Refresh status to retry.';
+      scheduleRefresh(token, M.parseRoute(location.hash));
+      return;
+    }
+    await render();
+  }
+
   /** Render only the most recent route; late responses cannot replace a newer screen. */
   async function render() {
+    window.clearTimeout(refreshTimer);
     const token = ++generation;
     const route = M.parseRoute(location.hash);
     chrome(route);
@@ -652,13 +791,19 @@
       if (route.view === 'catalogue' || route.view === 'library') await catalogue(token, route.view === 'library');
       else if (route.view === 'mod') await project(token, route);
       else if (route.view === 'submit') await editor(token);
-      else if (route.view === 'mine') await mine(token);
+      else if (route.view === 'mine') await mine(token, route);
       else await staff(token, route);
     } catch (_) { mount(token, failure('The response could not be displayed. Please retry.')); }
+    scheduleRefresh(token, route);
   }
 
   document.querySelector('[data-close]').addEventListener('click', () => document.getElementById('signin-dialog').close());
   window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
+  document.addEventListener('visibilitychange', () => {
+    window.clearTimeout(refreshTimer);
+    if (!document.hidden) scheduleRefresh(generation, M.parseRoute(location.hash));
+  });
+  window.addEventListener('pagehide', () => window.clearTimeout(refreshTimer));
   document.getElementById('preview-note').hidden = backend.backend !== 'mock';
   document.getElementById('reset-preview').addEventListener('click', async () => {
     backend.reset(); validationController?.abort(); validationPending = false; mediaPending = false; fileToken++; draft = null; draftOwner = null; await loadSession(); await render(); announce('Sample data restored.');

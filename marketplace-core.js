@@ -206,6 +206,7 @@
       const tab = tabs.includes(parts[1]) ? parts[1] : "queue";
       return { view: "staff", tab: tab, id: tab === "queue" ? parts[2] : undefined };
     }
+    if (parts[0] === "mine") return { view: "mine", id: parts[1] };
     return { view: parts[0] };
   }
 

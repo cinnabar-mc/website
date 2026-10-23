@@ -35,7 +35,7 @@ def capability_descriptors(text):
     return result
 
 
-def build(repository, output):
+def build(repository, output, marketplace_backend="http"):
     """Render site files from the declared inputs in a client checkout."""
     config = json.loads((repository / INPUTS["release_manifest"]).read_text(encoding="utf-8"))
     repository_url = "https://github.com/" + config["repository"]
@@ -51,7 +51,9 @@ def build(repository, output):
                       if value["rust_name"] == "CINNABAR_API_BASE_URL")
     config["online_count_url"] = api_origin.rstrip("/") + "/v1/presence/count"
     config["online_history_url"] = api_origin.rstrip("/") + "/v1/presence/history"
-    config["marketplace"] = {"api_url": api_origin.rstrip("/") + "/v1", "backend": "mock"}
+    if marketplace_backend not in {"http", "mock"}:
+        raise ValueError("marketplace backend must be http or mock")
+    config["marketplace"] = {"api_url": api_origin.rstrip("/") + "/v1", "backend": marketplace_backend}
     capabilities = capability_descriptors((repository / INPUTS["mod_grants"]).read_text(encoding="utf-8"))
     icon = (repository / INPUTS["icon"]).read_text(encoding="utf-8")
     red = ET.fromstring(icon).find("{http://www.w3.org/2000/svg}rect").attrib["fill"]
@@ -104,5 +106,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=CHECKOUT)
     parser.add_argument("--output", type=Path, default=HERE / "dist")
+    parser.add_argument("--marketplace-backend", choices=("http", "mock"), default="http",
+                        help="use mock only for an explicitly labelled local preview")
     args = parser.parse_args()
-    build(args.source, args.output)
+    build(args.source, args.output, args.marketplace_backend)

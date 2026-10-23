@@ -15,8 +15,10 @@ versions and respond to reports under the player's Microsoft/Xbox identity.
 ## Scope
 
 The marketplace extends the existing static website at /mods/. The default
-backend is a clearly labelled browser preview; the HTTP adapter targets the
-separate Cinnabar API. Runtime grants, compatibility and installation remain
+backend targets the separate Cinnabar API. An explicit mock build provides a
+clearly labelled browser preview. Uploads include prepared image files, captions
+and alt text. Creator and staff workspaces refresh authoritative scan/review states.
+Runtime grants, compatibility and installation remain
 client responsibilities. Automatic publication for established creators requires
 authoritative server scan and trust results. The website never invents a pass.
 

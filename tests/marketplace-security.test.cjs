@@ -113,3 +113,17 @@ test('rejects executable gallery data without creating any submission', async ()
   assert.equal(response.status, 422);
   assert.equal((await api.request('GET', '/mods/unsafe-media')).status, 404);
 });
+
+test('release states and approval readiness fail closed on pending, failed, missing and expired evidence', () => {
+  const version = { status: 'submitted', scan: { state: 'complete', review_ready: true, expires_at: Date.now() + 60000,
+    report: { deterministic: 'pass', ai: { verdict: 'clear' } } } };
+  assert.equal(C.scanApproval(version).ok, true);
+  assert.equal(C.releaseState(version).label, 'Awaiting staff review');
+  assert.equal(C.scanApproval({ ...version, scan: undefined }).ok, false);
+  assert.equal(C.scanApproval({ ...version, scan: { ...version.scan, expires_at: 1 } }).ok, false);
+  assert.equal(C.scanApproval({ ...version, scan: { ...version.scan, report: { deterministic: 'block' } } }).ok, false);
+  for (const state of ['queued', 'running', 'failed']) assert.equal(C.scanApproval({ ...version, scan: { ...version.scan, state } }).ok, false);
+  assert.equal(C.releaseState({ ...version, publication: 'automatic' }).label, 'Publication pending');
+  assert.equal(C.releaseState({ ...version, status: 'approved', publication: 'automatic' }).label, 'Published automatically');
+  assert.equal(C.releaseState({ ...version, pulled: true }).label, 'Pulled');
+});

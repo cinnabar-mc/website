@@ -65,7 +65,36 @@
     return 'Visuals';
   }
 
-  const api = { externalUrl, imageUrl, markdown, category };
+  /** Describe the server's release state without treating scan completion as publication or a safety guarantee. */
+  function releaseState(version) {
+    if (version.pulled) return { label: 'Pulled', tone: 'error' };
+    if (version.status === 'approved') return { label: version.publication === 'automatic' ? 'Published automatically' : 'Published after review', tone: 'good' };
+    if (version.status === 'rejected') return { label: 'Rejected', tone: 'error' };
+    if (version.status === 'changes') return { label: 'Changes requested', tone: 'warning' };
+    if (version.publication) return { label: 'Publication pending', tone: 'warning' };
+    const scan = version.scan;
+    if (!scan) return { label: 'Awaiting review', tone: 'muted' };
+    if (scan.state === 'queued') return { label: 'Queued for scanning', tone: 'muted' };
+    if (scan.state === 'running') return { label: 'Scanning', tone: 'warning' };
+    if (scan.state === 'failed') return { label: 'Scan failed · held', tone: 'error' };
+    if (scan.report?.deterministic === 'block') return { label: 'Validation blocked', tone: 'error' };
+    if (scan.report?.ai?.verdict === 'error') return { label: 'AI review failed · held', tone: 'error' };
+    if (scan.state !== 'complete') return { label: 'Scan status unavailable', tone: 'warning' };
+    if (scan.review_ready !== true) return { label: 'Rescan required', tone: 'warning' };
+    return { label: scan.report?.ai?.verdict === 'flag' ? 'Flagged for staff review' : 'Awaiting staff review', tone: 'warning' };
+  }
+
+  /** Approval controls require an explicit, fresh server readiness decision; the API still authorizes each write. */
+  function scanApproval(version) {
+    if (!version.scan) return { ok: false, reason: 'The API did not provide scan readiness. Refresh after upgrading the API.' };
+    if (version.scan.review_ready !== true) return { ok: false, reason: 'A complete, current scan must pass before approval. Rescan failed, blocked or expired evidence.' };
+    if (version.scan.expires_at && version.scan.expires_at <= Date.now()) return { ok: false, reason: 'The scan has expired. Request a rescan before approving.' };
+    if (version.scan.state !== 'complete' || version.scan.report?.deterministic !== 'pass'
+      || !['clear', 'flag'].includes(version.scan.report?.ai?.verdict)) return { ok: false, reason: 'Scan evidence is incomplete. Request a rescan.' };
+    return { ok: true };
+  }
+
+  const api = { externalUrl, imageUrl, markdown, category, releaseState, scanApproval };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CinnabarContent = api;
 })(typeof window !== 'undefined' ? window : globalThis);
