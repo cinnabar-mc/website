@@ -32,19 +32,29 @@ def build(repository, output):
                       if value["rust_name"] == "CINNABAR_API_BASE_URL")
     config["online_count_url"] = api_origin.rstrip("/") + "/v1/presence/count"
     config["online_history_url"] = api_origin.rstrip("/") + "/v1/presence/history"
+    # The marketplace API does not exist yet; the preview runs on an in-browser mock until it does.
+    config["marketplace"] = {"api_url": api_origin.rstrip("/") + "/v1", "backend": "mock"}
     icon = (repository / INPUTS["icon"]).read_text()
     red = ET.fromstring(icon).find("{http://www.w3.org/2000/svg}rect").attrib["fill"]
-    page = (HERE / "index.html.in").read_text()
-    page = page.replace("@@DISCORD_MARK@@", (repository / INPUTS["discord_mark"]).read_text().strip())
-    page = page.replace("@@RED@@", red)
-    page = page.replace("@@FAVICON@@", "data:image/svg+xml," + quote(icon, safe=""))
-    page = page.replace("@@REPOSITORY_URL@@", repository_url)
+    replacements = {
+        "@@DISCORD_MARK@@": (repository / INPUTS["discord_mark"]).read_text().strip(),
+        "@@RED@@": red,
+        "@@FAVICON@@": "data:image/svg+xml," + quote(icon, safe=""),
+        "@@REPOSITORY_URL@@": repository_url,
+    }
     output.mkdir(parents=True, exist_ok=True)
-    (output / "index.html").write_text(page)
+    (output / "mods").mkdir(exist_ok=True)
+    for template, target in (("index.html.in", "index.html"), ("mods.html.in", "mods/index.html")):
+        page = (HERE / template).read_text()
+        for marker, value in replacements.items():
+            page = page.replace(marker, value)
+        (output / target).write_text(page)
     (output / "downloads.js").write_text("window.CINNABAR_DOWNLOADS = " + json.dumps(config) + ";\n")
     shutil.copyfile(HERE / "app.js", output / "app.js")
     shutil.copyfile(HERE / "presence.js", output / "presence.js")
     shutil.copyfile(HERE / "history.js", output / "history.js")
+    for script in ("marketplace-core.js", "marketplace-mock.js", "marketplace.js"):
+        shutil.copyfile(HERE / script, output / script)
     shutil.copyfile(repository / INPUTS["title"], output / "title.png")
     rng = random.Random(27)
     colors = ["#1c221d", "#202620", "#242a23", "#262d25", "#1f251f"]

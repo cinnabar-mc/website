@@ -125,8 +125,10 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(config["nightly_base"],
                          f'https://github.com/{self.config["repository"]}/releases/download/nightly/')
         self.assertEqual(config["nightly_install_command"], config["install_command"] + " -s -- --channel nightly")
-        self.assertEqual({path.name for path in self.output.iterdir()}, {
+        self.assertEqual({path.relative_to(self.output).as_posix() for path in self.output.rglob("*")
+                          if path.is_file()}, {
             "index.html", "downloads.js", "app.js", "presence.js", "history.js", "title.png", "texture.svg",
+            "mods/index.html", "marketplace-core.js", "marketplace-mock.js", "marketplace.js",
         })
         self.assertFalse((self.output / self.config["install_script"]).exists())
 
@@ -156,6 +158,25 @@ class RenderTests(unittest.TestCase):
         self.assertIn('class="first-open"', html)
         self.assertEqual((self.output / "title.png").read_bytes(),
                          (self.repository / RENDER.INPUTS["title"]).read_bytes())
+
+    def test_mods_page_shares_branding_and_starts_on_the_labelled_mock(self):
+        """The marketplace preview reuses client branding and cannot pass for live data."""
+        RENDER.build(self.repository, self.output)
+        html = (self.output / "mods" / "index.html").read_text()
+        self.assertNotIn("@@", html)
+        page = Page()
+        page.feed(html)
+        scripts = [script["src"] for script in page.scripts]
+        self.assertEqual(scripts, ["/downloads.js", "/marketplace-core.js", "/marketplace-mock.js", "/marketplace.js"])
+        for script in page.scripts:
+            self.assertIn("defer", script)
+            self.assertTrue((self.output / script["src"].lstrip("/")).is_file())
+        self.assertIn('id="preview-note"', html)
+        self.assertIn("sample data", html)
+        self.assertEqual(self.config_from_output()["marketplace"],
+                         {"api_url": "https://fixture-api.invalid/v1", "backend": "mock"})
+        landing = (self.output / "index.html").read_text()
+        self.assertIn('<a class="mods-link" href="/mods/">Mods</a>', landing)
 
 
 if __name__ == "__main__":

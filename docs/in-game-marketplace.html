@@ -1,0 +1,134 @@
+<!doctype html>
+<!-- Design mock of the client's Mods screen, Marketplace tab, at 1280×720 GUI scale 2.
+     Not deployed. The client draws this with OreUI (crates/oreui); colours approximate its dark theme
+     and use no game assets. Sample data only. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>In-game marketplace mock</title>
+<style>
+  :root { --bg: #1e1e1f; --panel: #313233; --card: #3a3b3c; --card-hi: #48494a; --edge: #121213; --hi: #ffffff1f; --text: #fff; --soft: #d0d1d4; --muted: #b8b9bc;
+    --green: #3c8527; --green-lo: #1d4d13; --r0: #95c783; --r1: #c3d38a; --r2: #e6d7a8; --r3: #f0a868; --r4: #f27a63; font-family: system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #000; }
+  .frame { width: 1280px; height: 720px; overflow: hidden; display: grid; grid-template-rows: 56px 1fr; background: #18191a; color: var(--text); }
+  .bar { display: flex; align-items: center; gap: 16px; padding: 0 20px; background: var(--panel); border-bottom: 2px solid var(--edge); box-shadow: inset 0 -2px var(--hi); }
+  .back { width: 40px; height: 40px; display: grid; place-items: center; background: var(--card-hi); border: 2px solid var(--edge); box-shadow: inset 0 2px var(--hi), 0 3px 0 var(--edge); font-weight: 700; }
+  .bar h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: .02em; }
+  .tabs { display: flex; gap: 4px; margin-left: 24px; }
+  .tab { padding: 10px 18px; background: var(--card); border: 2px solid var(--edge); color: var(--soft); font-weight: 600; font-size: 14px; }
+  .tab.on { background: var(--bg); color: #fff; box-shadow: inset 0 -3px var(--green); }
+  .who { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .who b { color: #fff; }
+  .body { display: grid; grid-template-columns: 220px 1fr 400px; gap: 12px; padding: 12px; min-height: 0; }
+  .side, .list, .detail { background: var(--panel); border: 2px solid var(--edge); box-shadow: inset 0 2px var(--hi); min-height: 0; }
+  .side { padding: 10px; display: flex; flex-direction: column; gap: 4px; }
+  .side h2 { margin: 4px 6px 8px; font-size: 12px; color: var(--muted); font-weight: 600; }
+  .rung { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; padding: 10px; border: 2px solid transparent; font-weight: 600; font-size: 14px; color: var(--soft); }
+  .rung.on { background: var(--card-hi); border-color: var(--edge); color: #fff; box-shadow: inset 0 2px var(--hi); }
+  .rung.focus { outline: 2px solid #fff; outline-offset: -2px; }
+  .rung span:last-child { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .meter { display: grid; gap: 2px; width: 10px; } .meter i { height: 4px; background: #555658; } .meter i.on { background: var(--c); }
+  [data-r="0"] { --c: var(--r0); } [data-r="1"] { --c: var(--r1); } [data-r="2"] { --c: var(--r2); } [data-r="3"] { --c: var(--r3); } [data-r="4"] { --c: var(--r4); }
+  .inbox { margin-top: auto; padding: 10px; background: #2a3a26; border: 2px solid var(--edge); font-size: 12px; color: #d8ecd0; line-height: 1.45; }
+  .inbox b { display: block; color: #fff; font-size: 13px; }
+  .list { padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .search { display: flex; gap: 8px; }
+  .search div { flex: 1; padding: 10px 12px; background: var(--bg); border: 2px solid var(--edge); color: var(--muted); font-size: 14px; }
+  .group { margin: 6px 2px 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; padding-bottom: 6px; border-bottom: 2px solid var(--c); }
+  .group small { color: var(--muted); font-weight: 400; margin-left: auto; }
+  .card { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; padding: 8px 10px; background: var(--card); border: 2px solid var(--edge); box-shadow: inset 0 2px var(--hi); }
+  .card.sel { background: var(--card-hi); outline: 2px solid #fff; outline-offset: -2px; }
+  .icon { width: 40px; height: 40px; border: 2px solid var(--edge); image-rendering: pixelated; }
+  .card b { font-size: 14px; } .card p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+  .state { font-size: 12px; color: var(--muted); text-align: right; }
+  .state.ok { color: var(--r0); }
+  .chips { display: flex; gap: 4px; margin-top: 4px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 6px; font-size: 11px; background: var(--bg); border: 1px solid #555658; color: var(--soft); }
+  .chip::before { content: ""; width: 6px; height: 6px; background: var(--c, var(--r0)); }
+  .chip.s { border-color: #8a7440; color: #f1e3b8; }
+  .detail { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .head { display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: center; }
+  .head .icon { width: 56px; height: 56px; }
+  .head h2 { margin: 0; font-size: 20px; } .head p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .ladder { border: 2px solid var(--edge); background: var(--bg); }
+  .ladder div { display: grid; grid-template-columns: 12px 76px 1fr; gap: 10px; align-items: center; padding: 7px 10px; border-top: 1px solid #2c2c2e; font-size: 12px; color: #9a9b9e; }
+  .ladder div:first-child { border-top: 0; }
+  .ladder .in { color: var(--soft); }
+  .ladder .top { background: color-mix(in srgb, var(--c) 16%, #2b2c2d); color: #fff; }
+  .ladder b { font-size: 13px; }
+  .note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12px; color: var(--soft); }
+  .facts span:nth-child(odd) { color: var(--muted); }
+  .actions { margin-top: auto; display: flex; gap: 8px; }
+  .btn { flex: 1; padding: 12px; text-align: center; font-weight: 700; font-size: 15px; border: 2px solid var(--edge); background: var(--green); box-shadow: inset 0 2px #ffffff40, 0 4px 0 var(--green-lo); }
+  .btn.n { flex: 0 0 auto; background: var(--card-hi); box-shadow: inset 0 2px var(--hi), 0 4px 0 var(--edge); }
+  .hint { display: flex; gap: 16px; justify-content: flex-end; color: var(--muted); font-size: 12px; }
+  .hint kbd { padding: 1px 6px; border: 1px solid #555658; background: var(--bg); color: #fff; font: inherit; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <header class="bar">
+    <div class="back" aria-label="Back">‹</div>
+    <h1>Mods</h1>
+    <nav class="tabs"><span class="tab">Installed · 3</span><span class="tab on">Marketplace</span></nav>
+    <span class="who">Signed in as <b>MossyCobble</b> · same account as the website</span>
+  </header>
+  <div class="body">
+    <aside class="side">
+      <h2>What mods can touch</h2>
+      <div class="rung"><span></span><span>All mods</span><span>8</span></div>
+      <div class="rung on" data-r="0"><span class="meter"><i></i><i></i><i></i><i></i><i class="on"></i></span><span>Looks</span><span>2</span></div>
+      <div class="rung" data-r="1"><span class="meter"><i></i><i></i><i></i><i class="on"></i><i class="on"></i></span><span>Reads</span><span>2</span></div>
+      <div class="rung" data-r="2"><span class="meter"><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i></span><span>Watches</span><span>1</span></div>
+      <div class="rung" data-r="3"><span class="meter"><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span><span>Acts</span><span>2</span></div>
+      <div class="rung" data-r="4"><span class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span><span>Network</span><span>1</span></div>
+      <div class="inbox"><b>From the website · 1</b>Chunk Borders was sent from the website. Review its permissions to turn it on.</div>
+    </aside>
+    <section class="list">
+      <div class="search"><div>Search mods</div></div>
+      <div class="group" data-r="0"><span class="meter"><i></i><i></i><i></i><i></i><i class="on"></i></span>Looks <small>Approved by staff</small></div>
+      <div class="card sel" data-r="0">
+        <svg class="icon" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect width="8" height="8" fill="#253025"/><rect x="1" y="1" width="1" height="1" fill="#95c783"/><rect x="6" y="1" width="1" height="1" fill="#95c783"/><rect x="2" y="1" width="1" height="1" fill="#95c783"/><rect x="5" y="1" width="1" height="1" fill="#95c783"/><rect x="3" y="1" width="1" height="1" fill="#95c783"/><rect x="4" y="1" width="1" height="1" fill="#95c783"/><rect x="1" y="2" width="1" height="1" fill="#95c783"/><rect x="6" y="2" width="1" height="1" fill="#95c783"/><rect x="2" y="2" width="1" height="1" fill="#95c783"/><rect x="5" y="2" width="1" height="1" fill="#95c783"/><rect x="3" y="2" width="1" height="1" fill="#edf2eb"/><rect x="4" y="2" width="1" height="1" fill="#edf2eb"/><rect x="1" y="3" width="1" height="1" fill="#95c783"/><rect x="6" y="3" width="1" height="1" fill="#95c783"/><rect x="2" y="3" width="1" height="1" fill="#95c783"/><rect x="5" y="3" width="1" height="1" fill="#95c783"/><rect x="3" y="3" width="1" height="1" fill="#95c783"/><rect x="4" y="3" width="1" height="1" fill="#95c783"/><rect x="3" y="4" width="1" height="1" fill="#95c783"/><rect x="4" y="4" width="1" height="1" fill="#95c783"/><rect x="3" y="5" width="1" height="1" fill="#95c783"/><rect x="4" y="5" width="1" height="1" fill="#95c783"/><rect x="1" y="6" width="1" height="1" fill="#edf2eb"/><rect x="6" y="6" width="1" height="1" fill="#edf2eb"/><rect x="2" y="6" width="1" height="1" fill="#95c783"/><rect x="5" y="6" width="1" height="1" fill="#95c783"/></svg>
+        <div><b>Time Changer</b><p>BlockSmith42 · Cycle your sky between day, sunset, night and midnight.</p><div class="chips"><span class="chip" data-r="0">Environment</span></div></div>
+        <span class="state">1.2.0</span>
+      </div>
+      <div class="card" data-r="0">
+        <svg class="icon" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect width="8" height="8" fill="#253025"/><rect x="2" y="1" width="1" height="1" fill="#95c783"/><rect x="5" y="1" width="1" height="1" fill="#95c783"/><rect x="2" y="2" width="1" height="1" fill="#95c783"/><rect x="5" y="2" width="1" height="1" fill="#95c783"/><rect x="1" y="3" width="1" height="1" fill="#95c783"/><rect x="6" y="3" width="1" height="1" fill="#95c783"/><rect x="2" y="3" width="1" height="1" fill="#edf2eb"/><rect x="5" y="3" width="1" height="1" fill="#edf2eb"/><rect x="3" y="3" width="1" height="1" fill="#95c783"/><rect x="4" y="3" width="1" height="1" fill="#95c783"/><rect x="1" y="4" width="1" height="1" fill="#edf2eb"/><rect x="6" y="4" width="1" height="1" fill="#edf2eb"/><rect x="2" y="4" width="1" height="1" fill="#95c783"/><rect x="5" y="4" width="1" height="1" fill="#95c783"/><rect x="2" y="5" width="1" height="1" fill="#95c783"/><rect x="5" y="5" width="1" height="1" fill="#95c783"/><rect x="3" y="5" width="1" height="1" fill="#95c783"/><rect x="4" y="5" width="1" height="1" fill="#95c783"/><rect x="1" y="6" width="1" height="1" fill="#95c783"/><rect x="6" y="6" width="1" height="1" fill="#95c783"/><rect x="3" y="6" width="1" height="1" fill="#95c783"/><rect x="4" y="6" width="1" height="1" fill="#95c783"/></svg>
+        <div><b>Clear Skies</b><p>LumenLeaf · Softer fog and a cleaner horizon.</p><div class="chips"><span class="chip" data-r="0">Rendering</span><span class="chip" data-r="0">Post effects</span></div></div>
+        <span class="state ok">Installed</span>
+      </div>
+      <div class="group" data-r="1"><span class="meter"><i></i><i></i><i></i><i class="on"></i><i class="on"></i></span>Reads <small>Approved by staff</small></div>
+      <div class="card" data-r="1">
+        <svg class="icon" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect width="8" height="8" fill="#253025"/><rect x="2" y="1" width="1" height="1" fill="#c3d38a"/><rect x="5" y="1" width="1" height="1" fill="#c3d38a"/><rect x="3" y="1" width="1" height="1" fill="#c3d38a"/><rect x="4" y="1" width="1" height="1" fill="#c3d38a"/><rect x="1" y="2" width="1" height="1" fill="#c3d38a"/><rect x="6" y="2" width="1" height="1" fill="#c3d38a"/><rect x="2" y="2" width="1" height="1" fill="#c3d38a"/><rect x="5" y="2" width="1" height="1" fill="#c3d38a"/><rect x="1" y="3" width="1" height="1" fill="#c3d38a"/><rect x="6" y="3" width="1" height="1" fill="#c3d38a"/><rect x="2" y="3" width="1" height="1" fill="#c3d38a"/><rect x="5" y="3" width="1" height="1" fill="#c3d38a"/><rect x="2" y="4" width="1" height="1" fill="#c3d38a"/><rect x="5" y="4" width="1" height="1" fill="#c3d38a"/><rect x="1" y="5" width="1" height="1" fill="#c3d38a"/><rect x="6" y="5" width="1" height="1" fill="#c3d38a"/><rect x="2" y="5" width="1" height="1" fill="#c3d38a"/><rect x="5" y="5" width="1" height="1" fill="#c3d38a"/><rect x="3" y="5" width="1" height="1" fill="#c3d38a"/><rect x="4" y="5" width="1" height="1" fill="#c3d38a"/><rect x="1" y="6" width="1" height="1" fill="#c3d38a"/><rect x="6" y="6" width="1" height="1" fill="#c3d38a"/><rect x="2" y="6" width="1" height="1" fill="#c3d38a"/><rect x="5" y="6" width="1" height="1" fill="#c3d38a"/></svg>
+        <div><b>Coords HUD</b><p>BlockSmith42 · Coordinates, facing and biome in one corner card.</p><div class="chips"><span class="chip" data-r="0">HUD</span><span class="chip" data-r="1">Player status</span></div></div>
+        <span class="state">2.0.0</span>
+      </div>
+      <div class="card" data-r="1">
+        <svg class="icon" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect width="8" height="8" fill="#253025"/><rect x="1" y="1" width="1" height="1" fill="#edf2eb"/><rect x="6" y="1" width="1" height="1" fill="#edf2eb"/><rect x="3" y="1" width="1" height="1" fill="#c3d38a"/><rect x="4" y="1" width="1" height="1" fill="#c3d38a"/><rect x="3" y="2" width="1" height="1" fill="#c3d38a"/><rect x="4" y="2" width="1" height="1" fill="#c3d38a"/><rect x="2" y="3" width="1" height="1" fill="#c3d38a"/><rect x="5" y="3" width="1" height="1" fill="#c3d38a"/><rect x="3" y="3" width="1" height="1" fill="#c3d38a"/><rect x="4" y="3" width="1" height="1" fill="#c3d38a"/><rect x="2" y="4" width="1" height="1" fill="#edf2eb"/><rect x="5" y="4" width="1" height="1" fill="#edf2eb"/><rect x="1" y="5" width="1" height="1" fill="#c3d38a"/><rect x="6" y="5" width="1" height="1" fill="#c3d38a"/><rect x="2" y="5" width="1" height="1" fill="#c3d38a"/><rect x="5" y="5" width="1" height="1" fill="#c3d38a"/><rect x="3" y="5" width="1" height="1" fill="#c3d38a"/><rect x="4" y="5" width="1" height="1" fill="#c3d38a"/><rect x="1" y="6" width="1" height="1" fill="#c3d38a"/><rect x="6" y="6" width="1" height="1" fill="#c3d38a"/><rect x="3" y="6" width="1" height="1" fill="#c3d38a"/><rect x="4" y="6" width="1" height="1" fill="#c3d38a"/></svg>
+        <div><b>Chunk Borders</b><p>GridWalker · Outlines the chunk you're standing in.</p><div class="chips"><span class="chip" data-r="0">World drawing</span><span class="chip" data-r="1">Terrain</span></div></div>
+        <span class="state">Sent from web</span>
+      </div>
+    </section>
+    <section class="detail" data-r="0">
+      <div class="head">
+        <svg class="icon" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect width="8" height="8" fill="#253025"/><rect x="1" y="1" width="1" height="1" fill="#95c783"/><rect x="6" y="1" width="1" height="1" fill="#95c783"/><rect x="2" y="1" width="1" height="1" fill="#95c783"/><rect x="5" y="1" width="1" height="1" fill="#95c783"/><rect x="3" y="1" width="1" height="1" fill="#95c783"/><rect x="4" y="1" width="1" height="1" fill="#95c783"/><rect x="1" y="2" width="1" height="1" fill="#95c783"/><rect x="6" y="2" width="1" height="1" fill="#95c783"/><rect x="2" y="2" width="1" height="1" fill="#95c783"/><rect x="5" y="2" width="1" height="1" fill="#95c783"/><rect x="3" y="2" width="1" height="1" fill="#edf2eb"/><rect x="4" y="2" width="1" height="1" fill="#edf2eb"/><rect x="1" y="3" width="1" height="1" fill="#95c783"/><rect x="6" y="3" width="1" height="1" fill="#95c783"/><rect x="2" y="3" width="1" height="1" fill="#95c783"/><rect x="5" y="3" width="1" height="1" fill="#95c783"/><rect x="3" y="3" width="1" height="1" fill="#95c783"/><rect x="4" y="3" width="1" height="1" fill="#95c783"/><rect x="3" y="4" width="1" height="1" fill="#95c783"/><rect x="4" y="4" width="1" height="1" fill="#95c783"/><rect x="3" y="5" width="1" height="1" fill="#95c783"/><rect x="4" y="5" width="1" height="1" fill="#95c783"/><rect x="1" y="6" width="1" height="1" fill="#edf2eb"/><rect x="6" y="6" width="1" height="1" fill="#edf2eb"/><rect x="2" y="6" width="1" height="1" fill="#95c783"/><rect x="5" y="6" width="1" height="1" fill="#95c783"/></svg>
+        <div><h2>Time Changer</h2><p>by BlockSmith42 · 1.2.0 · reviewed by PixelWarden</p></div>
+      </div>
+      <div class="ladder">
+        <div class="in top" data-r="0"><span class="meter"><i></i><i></i><i></i><i></i><i class="on"></i></span><b>Looks</b><span>Environment: replaces visual time and menu branding</span></div>
+        <div data-r="1"><span class="meter"><i></i><i></i><i></i><i class="on"></i><i class="on"></i></span><b>Reads</b><span>Can't reach this</span></div>
+        <div data-r="2"><span class="meter"><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i></span><b>Watches</b><span>Can't reach this</span></div>
+        <div data-r="3"><span class="meter"><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span><b>Acts</b><span>Can't reach this</span></div>
+        <div data-r="4"><span class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span><b>Network</b><span>Can't reach this</span></div>
+      </div>
+      <p class="note">After it installs, you choose which permissions to allow. It stays off until you do.</p>
+      <div class="facts"><span>Size</span><span>212 KB</span><span>SHA-256</span><span>9c1e…4f0a</span><span>Source</span><span>github.com/blocksmith42/time-changer</span></div>
+      <div class="actions"><span class="btn">Install</span><span class="btn n">Report</span></div>
+      <div class="hint"><span><kbd>A</kbd> Install</span><span><kbd>Y</kbd> Report</span><span><kbd>B</kbd> Back</span></div>
+    </section>
+  </div>
+</div>
+</body>
+</html>

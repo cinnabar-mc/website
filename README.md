@@ -71,3 +71,19 @@ on each request. The API's shared cache still limits upstream reads to once per
 minute. Range changes cancel older requests; empty history and errors have
 explicit messages. Hover or touch the plot to inspect a sample, or focus it and
 use the arrow, Home and End keys.
+
+## Mod marketplace (preview)
+
+`/mods/` is a proof of concept for the mod marketplace and its staff console. Mods are
+filed by reach, the furthest capability their `cinnabar:grants` request touches, and
+reach decides how many staff must approve them. Accounts are Xbox identities from
+Microsoft sign-in, so the website and the game share one account.
+
+The API endpoints don't exist yet, so `render.py` builds the page with
+`marketplace.backend` set to `mock`. The page then runs on `marketplace-mock.js`,
+which keeps labelled sample data in the browser and replaces Microsoft sign-in with
+sample accounts for each role. `marketplace-core.js` holds the permission and review
+rules that both the page and the mock use. The API must enforce the same rules.
+
+See [docs/marketplace.md](docs/marketplace.md) for the account, role, review and
+distribution design, the API contract, and the in-game screen mock.
