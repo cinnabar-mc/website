@@ -21,6 +21,10 @@ class Page(HTMLParser):
     def __init__(self):
         super().__init__()
         self.scripts = []
+        self.inline_scripts = {}
+        self.current_inline_script = None
+        self.metas = {}
+        self.canonical = None
         self.downloads = []
         self.repository = None
         self.elements = []
@@ -29,8 +33,17 @@ class Page(HTMLParser):
     def handle_starttag(self, tag, attributes):
         attrs = dict(attributes)
         self.elements.append((tag, attrs, self.ancestors.copy()))
-        if tag == "script":
+        if tag == "script" and "src" in attrs:
             self.scripts.append(attrs)
+        elif tag == "script" and "id" in attrs:
+            self.current_inline_script = attrs["id"]
+            self.inline_scripts[self.current_inline_script] = ""
+        if tag == "meta" and "content" in attrs:
+            key = attrs.get("property") or attrs.get("name")
+            if key is not None:
+                self.metas[key] = attrs["content"]
+        if tag == "link" and attrs.get("rel") == "canonical":
+            self.canonical = attrs["href"]
         if tag == "a" and "data-release-asset" in attrs:
             self.downloads.append(attrs["data-release-asset"])
         if tag == "a" and attrs.get("class") == "github":
@@ -38,8 +51,14 @@ class Page(HTMLParser):
         if tag not in {"meta", "link", "img", "input", "br"}:
             self.ancestors.append((tag, attrs))
 
+    def handle_data(self, data):
+        if self.current_inline_script is not None:
+            self.inline_scripts[self.current_inline_script] += data
+
     def handle_endtag(self, tag):
         """Track enclosing regions so tests can check reading and grouping order."""
+        if tag == "script":
+            self.current_inline_script = None
         for index in range(len(self.ancestors) - 1, -1, -1):
             if self.ancestors[index][0] == tag:
                 del self.ancestors[index:]
@@ -65,7 +84,12 @@ class RenderTests(unittest.TestCase):
             platform: {arch: "fixture-" + name for arch, name in arches.items()}
             for platform, arches in self.config["manual_assets"].items()
         }
-        for path in (RENDER.INPUTS["icon"], RENDER.INPUTS["title"], RENDER.INPUTS["discord_mark"]):
+        for path in (
+            RENDER.INPUTS["icon"],
+            RENDER.INPUTS["title"],
+            RENDER.INPUTS["social_icon"],
+            RENDER.INPUTS["discord_mark"],
+        ):
             target = self.repository / path
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(SOURCE / path, target)
@@ -86,6 +110,37 @@ class RenderTests(unittest.TestCase):
         (self.repository / RENDER.INPUTS["discord_mark"]).write_text("M0 0L1 1Z\n")
         RENDER.build(self.repository, self.output)
         self.assertIn('<path d="M0 0L1 1Z"', (self.output / "index.html").read_text())
+
+    def test_social_metadata_builds_discord_component_preview(self):
+        RENDER.build(self.repository, self.output)
+        page = Page()
+        page.feed((self.output / "index.html").read_text())
+        site_url = RENDER.SITE_URL
+        social_icon_url = site_url + "icon.png"
+        self.assertEqual(page.canonical, site_url)
+        self.assertEqual(page.metas["description"], RENDER.SITE_DESCRIPTION)
+        self.assertEqual(page.metas["og:title"], RENDER.SITE_TITLE)
+        self.assertEqual(page.metas["og:description"], RENDER.SITE_DESCRIPTION)
+        self.assertEqual(page.metas["og:url"], site_url)
+        self.assertEqual(page.metas["og:image"], social_icon_url)
+        self.assertEqual(page.metas["twitter:card"], "summary")
+        self.assertEqual(page.metas["twitter:image"], social_icon_url)
+        component = json.loads(page.inline_scripts["discord:component-embed"])["component"]
+        self.assertEqual(component["accent_color"],
+                         int(page.metas["theme-color"].removeprefix("#"), 16))
+        self.assertEqual(component["components"][0]["accessory"]["media"]["url"],
+                         social_icon_url)
+        buttons = {
+            button["label"]: button["url"]
+            for button in component["components"][-1]["components"]
+        }
+        self.assertEqual(buttons, {
+            "Download": "https://github.com/fixture/download-contract/releases/latest",
+            "GitHub": "https://github.com/fixture/download-contract",
+            "Discord": RENDER.DISCORD_URL,
+        })
+        self.assertEqual((self.output / "icon.png").read_bytes(),
+                         (self.repository / RENDER.INPUTS["social_icon"]).read_bytes())
 
     def test_download_guidance_and_player_activity_stay_grouped(self):
         """Keep social navigation separate and presence inside its history region."""
@@ -126,7 +181,8 @@ class RenderTests(unittest.TestCase):
                          f'https://github.com/{self.config["repository"]}/releases/download/nightly/')
         self.assertEqual(config["nightly_install_command"], config["install_command"] + " -s -- --channel nightly")
         self.assertEqual({path.name for path in self.output.iterdir()}, {
-            "index.html", "downloads.js", "app.js", "presence.js", "history.js", "title.png", "texture.svg",
+            "index.html", "downloads.js", "app.js", "presence.js", "history.js",
+            "title.png", "icon.png", "texture.svg",
         })
         self.assertFalse((self.output / self.config["install_script"]).exists())
 

@@ -18,9 +18,10 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
 `dist/` contains generated files. `source.json` pins a full client commit and
-names the release manifest, API contract, title and icon used by the renderer.
-`source.py fetch` materializes only those files in the ignored `.source/` checkout.
-To render against another local client checkout, use `python3 render.py --source PATH`.
+names the release manifest, API contract, title, favicon and social preview icon
+used by the renderer. `source.py fetch` materializes only those files in the
+ignored `.source/` checkout. To render against another local client checkout,
+use `python3 render.py --source PATH`.
 
 The hourly Update client inputs workflow checks the client's `dev` branch. It
 opens a tested PR changing the pin only when one of the declared inputs changes;
