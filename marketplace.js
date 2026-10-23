@@ -112,30 +112,8 @@
     toast.timer = window.setTimeout(function () { toastEl.textContent = ""; }, 6000);
   }
 
-  /** Talks to the live marketplace API with the session cookie it sets after Microsoft sign-in. */
-  function httpApi(base) {
-    let csrf = "";
-    return {
-      backend: "http",
-      request: async function (method, path, body) {
-        const response = await fetch(base + path, {
-          method: method, credentials: "include", referrerPolicy: "strict-origin",
-          headers: Object.assign({ Accept: "application/json" }, body ? { "Content-Type": "application/json" } : {},
-            method !== "GET" ? { "X-Cinnabar-CSRF": csrf } : {}),
-          body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(10000),
-        });
-        const data = await response.json().catch(function () { return { error: "The marketplace didn't answer properly." }; });
-        if (path === "/me" && data && data.csrf) csrf = data.csrf;
-        return { status: response.status, body: data };
-      },
-      signIn: function () {
-        window.location.assign(base + "/auth/microsoft/start?return_to=" + encodeURIComponent(window.location.href));
-      },
-    };
-  }
-
   const backend = config.backend === "http" && config.api_url
-    ? httpApi(config.api_url.replace(/\/$/, ""))
+    ? window.CinnabarMarketHttp.createHttpApi(config.api_url.replace(/\/$/, ""), window.fetch.bind(window), window.location)
     : window.CinnabarMarketMock.createMockApi(window.localStorage);
   let session = { account: null, game_online: false, library: [] };
   let queueCount = 0;
@@ -450,9 +428,15 @@
       Object.values(errors).forEach(function (el) { el.textContent = ""; });
       Object.values(fields).forEach(function (el) { el.removeAttribute("aria-invalid"); });
       if (!parsed) { formError.textContent = "Choose your mod's .wasm file first."; return; }
-      const body = { grants: parsed.grants || {}, sha256: parsed.sha256, bytes: file.size };
-      Object.keys(fields).forEach(function (k) { body[k] = fields[k].value.trim(); });
-      const result = await call("POST", "/submissions", body);
+      const listing = {};
+      Object.keys(fields).forEach(function (k) { listing[k] = fields[k].value.trim(); });
+      const body = Object.assign({ grants: parsed.grants || {}, sha256: parsed.sha256, bytes: file.size }, listing);
+      let result;
+      try {
+        result = backend.submit ? await backend.submit(listing, file) : await call("POST", "/submissions", body);
+      } catch (error) {
+        result = { status: 0, body: { error: "Can't reach the marketplace. Check your connection and try again." } };
+      }
       if (result.status === 200) { toast(body.name + " " + body.version + " is in the review queue."); location.hash = "#/mine"; return; }
       formError.textContent = result.body.error;
       Object.entries(result.body.fields || {}).forEach(function ([k, message]) {
@@ -696,6 +680,18 @@
       toast("Sample data restored.");
       render();
     });
+  }
+  const SIGN_IN_ERRORS = {
+    cancelled: "Sign-in was cancelled.",
+    no_xbox_profile: "That Microsoft account has no Xbox profile yet. Sign in to Minecraft once, then try again.",
+    child_account: "A parent needs to allow this account to use Xbox Live in Microsoft family settings.",
+    xbox_unavailable: "Xbox sign-in isn't answering. Try again in a minute.",
+    failed: "Sign-in didn't finish. Try again.",
+  };
+  const signInError = new URLSearchParams(location.search).get("signin_error");
+  if (signInError) {
+    toast(SIGN_IN_ERRORS[signInError] || SIGN_IN_ERRORS.failed);
+    history.replaceState(null, "", location.pathname + location.hash);
   }
   loadSession().then(render);
 })();

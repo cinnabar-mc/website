@@ -240,3 +240,28 @@ test('reports need a signed-in player, a reason and details', async () => {
   assert.equal((await client.request('POST', `/staff/reports/${reports[0].id}/resolve`, { note: '' })).status, 400);
   assert.equal((await client.request('POST', `/staff/reports/${reports[0].id}/resolve`, { note: 'Fixed in 0.9.1' })).body.status, 'resolved');
 });
+
+test('the live client sends the session cookie, repeats the CSRF token and uploads components as forms', async () => {
+  const { createHttpApi } = require('../marketplace-http.js');
+  const calls = [];
+  const replies = [{ account: { gamertag: 'Steve' }, csrf: 'token-1' }, { id: '12', status: 'submitted' }];
+  const location = { href: 'https://site.test/mods/#/submit', assign: url => calls.push({ assigned: url }) };
+  const client = createHttpApi('https://api.test/v1', async (url, init) => {
+    calls.push({ url, init });
+    return { status: 200, json: async () => replies.shift() };
+  }, location);
+  await client.request('GET', '/me');
+  const file = new File([new Uint8Array([0, 0x61, 0x73, 0x6d])], 'compass.wasm');
+  const result = await client.submit({ slug: 'compass', version: '0.1.0' }, file);
+  assert.equal(result.body.status, 'submitted');
+  assert.equal(calls[0].init.credentials, 'include');
+  assert.equal(calls[0].init.headers['X-Cinnabar-CSRF'], undefined);
+  assert.equal(calls[1].url, 'https://api.test/v1/submissions');
+  assert.equal(calls[1].init.headers['X-Cinnabar-CSRF'], 'token-1');
+  assert.equal(calls[1].init.headers['Content-Type'], undefined);
+  assert.ok(calls[1].init.body instanceof FormData);
+  assert.deepEqual(JSON.parse(calls[1].init.body.get('listing')), { slug: 'compass', version: '0.1.0' });
+  assert.equal(calls[1].init.body.get('file').name, 'compass.wasm');
+  client.signIn();
+  assert.equal(calls[2].assigned, 'https://api.test/v1/auth/microsoft/start?return_to=' + encodeURIComponent(location.href));
+});

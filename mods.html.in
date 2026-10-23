@@ -291,6 +291,7 @@
   <script src="/downloads.js" defer></script>
   <script src="/marketplace-core.js" defer></script>
   <script src="/marketplace-mock.js" defer></script>
+  <script src="/marketplace-http.js" defer></script>
   <script src="/marketplace.js" defer></script>
 </body>
 </html>

@@ -128,7 +128,7 @@ class RenderTests(unittest.TestCase):
         self.assertEqual({path.relative_to(self.output).as_posix() for path in self.output.rglob("*")
                           if path.is_file()}, {
             "index.html", "downloads.js", "app.js", "presence.js", "history.js", "title.png", "texture.svg",
-            "mods/index.html", "marketplace-core.js", "marketplace-mock.js", "marketplace.js",
+            "mods/index.html", "marketplace-core.js", "marketplace-mock.js", "marketplace-http.js", "marketplace.js",
         })
         self.assertFalse((self.output / self.config["install_script"]).exists())
 
@@ -167,7 +167,7 @@ class RenderTests(unittest.TestCase):
         page = Page()
         page.feed(html)
         scripts = [script["src"] for script in page.scripts]
-        self.assertEqual(scripts, ["/downloads.js", "/marketplace-core.js", "/marketplace-mock.js", "/marketplace.js"])
+        self.assertEqual(scripts, ["/downloads.js", "/marketplace-core.js", "/marketplace-mock.js", "/marketplace-http.js", "/marketplace.js"])
         for script in page.scripts:
             self.assertIn("defer", script)
             self.assertTrue((self.output / script["src"].lstrip("/")).is_file())

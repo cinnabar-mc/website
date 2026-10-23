@@ -53,7 +53,7 @@ def build(repository, output):
     shutil.copyfile(HERE / "app.js", output / "app.js")
     shutil.copyfile(HERE / "presence.js", output / "presence.js")
     shutil.copyfile(HERE / "history.js", output / "history.js")
-    for script in ("marketplace-core.js", "marketplace-mock.js", "marketplace.js"):
+    for script in ("marketplace-core.js", "marketplace-mock.js", "marketplace-http.js", "marketplace.js"):
         shutil.copyfile(HERE / script, output / script)
     shutil.copyfile(repository / INPUTS["title"], output / "title.png")
     rng = random.Random(27)
