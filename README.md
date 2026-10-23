@@ -8,9 +8,10 @@ and retains its [PolyForm Noncommercial license](LICENSE).
 
 ## Build and test
 
-Requires Python 3.11+, Node.js 22+, and Git. No Rust or game assets are needed.
+Requires Python 3.11+, Node.js 22+, npm, and Git. No Rust or game assets are needed.
 
 ```sh
+npm ci
 python3 source.py fetch
 python3 render.py
 node --test tests/*.test.cjs
@@ -71,3 +72,41 @@ on each request. The API's shared cache still limits upstream reads to once per
 minute. Range changes cancel older requests; empty history and errors have
 explicit messages. Hover or touch the plot to inspect a sample, or focus it and
 use the arrow, Home and End keys.
+
+
+## Mod marketplace
+
+Open `/mods/` for category/search discovery, descriptions and galleries, an
+account-specific library and creator draft, component checks, and staff review,
+reports, role and audit screens. `/marketplace/` serves the same hash application
+for existing preview links. Both pages share the download site's header.
+
+The normal build selects `marketplace.backend = "http"` and uses the API origin
+from the pinned bridge contract. Deploy/configure the marketplace API before
+merging this website rollout. Failed requests show recovery controls and never
+fall back to fictional data. For a labelled local preview, run
+`python3 render.py --marketplace-backend mock`; sample accounts appear only there.
+
+The HTTP adapter uses Microsoft sign-in, credentials, CSRF and multipart component
+and image uploads. Captions, alt text, descriptions, category, license and release
+notes are versioned by the API. Prepared raster derivatives are uploaded as files;
+pending screenshots use authenticated creator/staff routes. Drafts stay local and
+do not retain component bytes: reselect the file after reloading.
+
+Your projects and the review workspace refresh server scan/publication states every
+ten seconds while visible. Staff notes survive refreshes and failed requests.
+Approval requires the API's current readiness result; AI flags require an explanation.
+Staff can request rescans and administrators can manage project-specific creator
+trust. The server authorizes every action and publishes eligible established updates.
+Library removal remains unavailable in HTTP mode. See [docs/marketplace.md](docs/marketplace.md)
+for integration, local verification and rollout requirements.
+
+Permission labels/types come from the pinned client's `grants.rs` through
+`source.json`. Command diffs include exact added/removed values; unsupported
+new field types fail the build. A disposable worker uses pinned Jco/Wasmtime
+component parsing to validate structure/types and nested guest bytecode without
+instantiating uploaded code. A timeout or parser failure blocks submission.
+These are browser preflight checks, not a server authorization or malware verdict.
+The API must independently validate uploaded bytes. The validator is bundled by
+`render.py` into ignored `dist/validator/` and lazily fetched during file checks.
+Its license is retained; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
