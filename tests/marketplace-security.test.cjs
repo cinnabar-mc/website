@@ -101,8 +101,24 @@ test('pending listing edits stay private, approved metadata follows its version,
   await api.request('POST', '/staff/mods/time-changer/hide', { hidden: true });
   await api.request('POST', '/auth/preview', { xuid: '2535400000000101' });
   assert.equal((await api.request('GET', '/me')).body.library.length, 1);
-  assert.equal((await api.request('POST', '/mods/time-changer/remove')).status, 200);
+  const selected = (await api.request('GET', '/me')).body.library[0];
+  assert.equal((await api.request('POST', '/mods/time-changer/remove', selected)).status, 200);
   assert.deepEqual((await api.request('GET', '/me')).body.library, []);
+});
+
+test('preview resends at the same clock value cannot be erased by an older removal', async () => {
+  const api = createMockApi({ getItem: () => null, setItem: () => {} }, () => 1234567890000);
+  await api.request('POST', '/auth/preview', { xuid: '2535400000000101' });
+  await api.request('POST', '/mods/time-changer/send');
+  const old = (await api.request('GET', '/me')).body.library[0];
+  await api.request('POST', '/mods/time-changer/send');
+  assert.equal((await api.request('POST', '/mods/time-changer/remove', old)).status, 409);
+  const current = (await api.request('GET', '/me')).body.library[0];
+  assert.notEqual(current.sent_at, old.sent_at);
+  assert.equal(current.sha256, old.sha256);
+  assert.equal((await api.request('POST', '/mods/time-changer/remove', current)).status, 200);
+  await api.request('POST', '/mods/time-changer/send');
+  assert.equal((await api.request('POST', '/mods/time-changer/remove', old)).status, 409);
 });
 
 test('rejects executable gallery data without creating any submission', async () => {

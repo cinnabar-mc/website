@@ -9,8 +9,12 @@ No SPA fallback or dynamic Worker is required.
 ## Website behavior
 
 - Search/filter state survives a project visit. The library belongs to the chosen
-  account; unavailable selections remain visible and removable in the preview.
+  account; unavailable selections remain visible and removable in both backends.
   Adding a mod never grants runtime permissions or installs code.
+- Library removal sends the displayed selection's hash and send timestamp. A stale
+  selection refreshes before another attempt; errors leave removal retryable.
+  Opening the library refreshes its account and selections. Pending removals cannot
+  replace a later route or account. Installed mods are managed in Cinnabar.
 - Descriptions support Markdown headings, lists, emphasis, code and HTTPS links,
   rendered as DOM nodes. Creator HTML is plain text. Images accept raster data
   in local drafts or API-derived HTTPS URLs; captions and alt text are plain text.
@@ -41,7 +45,8 @@ No SPA fallback or dynamic Worker is required.
 ## Service contract
 
 The HTTP adapter uses the existing `/v1` routes: `/me`, `/me/mods`, `/mods`,
-`/mods/:slug`, `/mods/:slug/send`, reports, `/submissions`, `/auth/*` and `/staff/*`.
+`/mods/:slug`, `/mods/:slug/send`, `/mods/:slug/remove`, reports, `/submissions`,
+`/auth/*` and `/staff/*`.
 It includes the host session cookie, repeats `/me`'s CSRF token on writes and sends
 release bytes as multipart forms. The API must derive identity, hashes, requested
 grants and publication authorization from trusted state and actual uploaded bytes.
@@ -60,7 +65,10 @@ the digest-derived route. Staff download the exact artifact from
 private scanner evidence. Automatic publication is reported only after the API
 marks the release approved. Local roles never authorize a write.
 
-The preview-only `/mods/:slug/remove` route remains unavailable in HTTP mode.
+`POST /mods/:slug/remove` sends `{sha256, sent_at}` from `/me`'s saved selection.
+The API requires the browser session and CSRF token, scopes deletion to that
+account, and notifies its connected clients. A 409 refreshes a changed selection
+without deleting a newer send. Hidden and pulled releases remain removable.
 Drafts are local, including in HTTP mode, and are not presented as server-synced state.
 
 Client capability descriptors are generated through `source.json`. Website reach

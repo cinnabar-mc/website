@@ -98,7 +98,9 @@ ten seconds while visible. Staff notes survive refreshes and failed requests.
 Approval requires the API's current readiness result; AI flags require an explanation.
 Staff can request rescans and administrators can manage project-specific creator
 trust. The server authorizes every action and publishes eligible established updates.
-Library removal remains unavailable in HTTP mode. See [docs/marketplace.md](docs/marketplace.md)
+Library removal works for public and unavailable selections, matching the exact
+saved hash and send timestamp. Installed mods are managed in Cinnabar.
+See [docs/marketplace.md](docs/marketplace.md)
 for integration, local verification and rollout requirements.
 
 Permission labels/types come from the pinned client's `grants.rs` through

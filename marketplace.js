@@ -10,6 +10,7 @@
       : { backend: 'unavailable', request: async () => ({ status: 503, body: { error: 'Marketplace configuration could not load. Reload this page to retry.' } }),
         signIn: () => announce('Marketplace configuration could not load. Reload this page before signing in.', true) };
   let session = { account: null, library: [] };
+  let removingLibrary = false;
   let generation = 0;
   let query = '';
   let selectedCategory = 'all';
@@ -242,11 +243,33 @@
       : mod.name + (result.body.game_online ? ' queued for your game.' : ' queued until your game connects.') + ' Review permissions in Cinnabar before enabling it.');
   }
 
-  /** Preserve unavailable library selections so they remain visible and removable. */
-  async function removeFromLibrary(slug) {
-    const result = await call('POST', '/mods/' + encodeURIComponent(slug) + '/remove');
-    if (result.status !== 200) return announce(result.body.error, true);
-    await loadSession(); await render(); announce('Removed from your preview library.');
+  /** Remove the displayed send request without letting stale actions replace a later route or identity. */
+  async function removeFromLibrary(selection, control) {
+    if (removingLibrary || control.disabled || !session.account) return;
+    removingLibrary = true;
+    control.textContent = 'Removing…';
+    app.querySelectorAll('[data-focus-key^="remove:"]').forEach(button => { button.disabled = true; });
+    const owner = session.account.xuid;
+    const token = generation;
+    try {
+      const result = await call('POST', '/mods/' + encodeURIComponent(selection.slug) + '/remove', {
+        sha256: selection.sha256, sent_at: selection.sent_at,
+      });
+      if (owner !== session.account?.xuid || token !== generation) return;
+      if (result.status !== 200 && result.status !== 409) return announce(result.body.error, true);
+      const refreshed = await loadSession(token);
+      if (refreshed.stale) return;
+      if (refreshed.status !== 200) return announce(result.status === 200
+        ? 'Removed from your library. Refresh the page to load your current library.' : refreshed.body.error, true);
+      await render();
+      if (owner !== session.account?.xuid || generation !== token + 1) return;
+      announce(result.status === 409 ? result.body.error : backend.backend === 'mock'
+        ? 'Removed from your preview library.' : 'Removed from your library. Manage installed mods in Cinnabar.', result.status === 409);
+    } finally {
+      removingLibrary = false;
+      control.textContent = 'Remove from library';
+      app.querySelectorAll('[data-focus-key^="remove:"]').forEach(button => { button.disabled = false; });
+    }
   }
 
   /** Present a clearly illustrative UI preview without fictional download counts. */
@@ -260,11 +283,17 @@
 
   /** Render category browsing and the saved library with search state retained. */
   async function catalogue(token, libraryOnly) {
+    if (libraryOnly) {
+      const current = await loadSession(token);
+      if (current.stale) return;
+      if (current.status !== 200) return mount(token, failure(current.body.error));
+      chrome(M.parseRoute(location.hash));
+    }
     const response = await call('GET', '/mods');
     if (token !== generation) return;
     if (response.status !== 200) return mount(token, failure(response.body.error));
     const mods = response.body;
-    const saved = new Set(session.library.map(item => item.slug));
+    const saved = new Set(session.library.filter(item => !item.pulled).map(item => item.slug));
     const rail = h('aside');
     const grid = h('div', { class: 'catalog-grid', 'aria-label': libraryOnly ? 'Saved mods' : 'Mod results' });
     const count = h('span', { class: 'small muted', role: 'status' });
@@ -296,29 +325,38 @@
         (!limited || !mod.capabilities.some(name => M.capability(name)?.sensitive)));
       if (order === 'name') visible = visible.slice().sort((a, b) => a.name.localeCompare(b.name));
       categoryButtons.forEach(([category, control]) => { control.className = category === selectedCategory ? 'active' : ''; control.setAttribute('aria-pressed', String(category === selectedCategory)); });
-      count.textContent = visible.length + ' mod' + (visible.length === 1 ? '' : 's');
       if (spotlight) spotlight.hidden = Boolean(query || selectedCategory !== 'all' || limited);
       grid.replaceChildren(...visible.map(mod => h('article', { class: 'mod-card' },
         h('div', { class: 'top' }, modIcon(mod), h('div', {}, h('h3', {}, h('a', { href: '#/mod/' + mod.slug, 'data-focus-key': 'mod:' + mod.slug }, mod.name)),
           h('span', { class: 'small muted' }, mod.creator_name)), h('span', { class: 'spacer' }), h('span', { class: 'small muted' }, 'Free')),
         h('p', {}, mod.summary), h('div', { class: 'meta' }, h('span', {}, C.category(mod)),
           h('span', {}, mod.capabilities.map(name => M.capability(name)?.label || name).join(' + ') || 'No optional permissions')),
-        libraryOnly && backend.backend === 'mock' ? button('Remove from library', () => removeFromLibrary(mod.slug), 'btn quiet gap', 'remove:' + mod.slug) : null)));
+        libraryOnly ? removalControl(session.library.find(item => item.slug === mod.slug), 'btn quiet gap') : null)));
       if (libraryOnly) {
-        for (const selection of session.library.filter(item => !mods.some(mod => mod.slug === item.slug))) {
+        for (const selection of session.library.filter(item => item.pulled || !mods.some(mod => mod.slug === item.slug))) {
           grid.append(h('article', { class: 'mod-card' }, h('h3', {}, selection.slug),
             h('p', {}, 'This release is unavailable. It may have been hidden or revoked.'),
-            backend.backend === 'mock' ? button('Remove from library', () => removeFromLibrary(selection.slug), 'btn quiet', 'remove:' + selection.slug) : null));
+            removalControl(selection)));
         }
       }
+      const total = grid.querySelectorAll('.mod-card').length;
+      count.textContent = total + ' mod' + (total === 1 ? '' : 's');
       if (!grid.childNodes.length) grid.append(h('div', { class: 'empty' }, h('h2', {}, libraryOnly ? 'Your library is empty.' : 'No mods match.'),
         h('p', {}, libraryOnly ? 'Explore the catalogue and inspect a mod before adding it.' : 'Try another search or category.'),
         button('Clear filters', () => { query = ''; selectedCategory = 'all'; limited = false; search.value = ''; render(); }, 'btn quiet', 'catalog:recovery')));
     }
     const content = h('div', {}, h('div', { class: 'search-tools' }, h('label', { class: 'search-wrap' }, icon('search'), search), sort),
       spotlight, h('div', { class: 'row between', style: 'margin-bottom:14px' }, h('h2', {}, libraryOnly ? 'Your library' : 'Find your next addition'), count), grid);
+    if (libraryOnly) content.insertBefore(h('p', { class: 'small muted' }, 'Removing a library selection stops queued delivery. Manage installed mods in Cinnabar.'), grid);
     mount(token, h('section', { class: 'catalog-layout' }, rail, content)); results();
     if (libraryOnly && !session.account) announce('Choose an account to keep a library. Browsing is public.');
+  }
+
+  /** Bind removal to the exact saved selection, including unavailable catalogue entries. */
+  function removalControl(selection, className = 'btn quiet') {
+    const control = button('Remove from library', () => removeFromLibrary(selection, control), className, 'remove:' + selection.slug);
+    control.disabled = removingLibrary;
+    return control;
   }
 
   /** Draw a project page with gallery, safe description, versions and permissions. */

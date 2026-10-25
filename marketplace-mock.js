@@ -197,13 +197,21 @@
         const listing = state.listings[slug];
         const view = listing && publicListing(listing);
         if (!view) return fail(404, "No public mod with that name.");
+        const previous = (state.library[state.session] || []).find(entry => entry.slug === slug);
+        const sentAt = Math.max(now(), (state.library_clock?.[state.session] || 0) + 1,
+          previous ? new Date(previous.sent_at).getTime() + 1 : 0);
+        (state.library_clock ||= {})[state.session] = sentAt;
         const library = state.library[state.session] = (state.library[state.session] || []).filter(function (e) { return e.slug !== slug; });
-        library.push({ slug: slug, version: view.version, sent_at: now() });
+        library.push({ slug: slug, version: view.version, sha256: view.sha256, sent_at: new Date(sentAt).toISOString() });
         return ok({ queued: true, game_online: state.game_online[state.session] !== false });
       }],
       ["POST", /^\/mods\/([a-z0-9-]+)\/remove$/, function (body, slug) {
         if (!me()) return fail(401, "Sign in first.");
-        state.library[state.session] = (state.library[state.session] || []).filter(function (entry) { return entry.slug !== slug; });
+        const library = state.library[state.session] || [];
+        if (!library.some(entry => entry.slug === slug && entry.sha256 === body.sha256 && entry.sent_at === body.sent_at)) {
+          return fail(409, "Your library changed. Review the current selection and try again.");
+        }
+        state.library[state.session] = library.filter(entry => entry.slug !== slug);
         return ok({ removed: true });
       }],
       ["POST", /^\/mods\/([a-z0-9-]+)\/reports$/, function (body, slug) {

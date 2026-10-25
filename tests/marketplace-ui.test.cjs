@@ -81,6 +81,103 @@ test('library selections are isolated by identity and removal keeps a usable foc
   assert.match(p.text(), /Your library is empty/);
 });
 
+/** A live library fixture with observable mutations and controllable delayed responses. */
+function libraryApi() {
+  const selection = { slug: 'saved-mod', version: '1.0.0', sha256: 'a'.repeat(64), sent_at: '2026-01-01T00:00:00.000Z' };
+  const api = { backend: 'http', calls: [], account: { xuid: 'player', gamertag: 'Player', role: 'player' },
+    library: [selection], mods: [], remove: async () => { api.library = []; return { status: 200, body: { removed: true } }; },
+    request: async (method, path, body) => {
+      api.calls.push(structuredClone({ method, path, body }));
+      if (path === '/me') return { status: 200, body: structuredClone({ account: api.account, library: api.library }) };
+      if (path === '/mods') return { status: 200, body: api.mods };
+      if (path.endsWith('/remove')) return api.remove(body);
+      return { status: 404, body: { error: 'Not found.' } };
+    } };
+  return api;
+}
+
+test('live library removes available and unavailable selections with their exact hash and send timestamp', async () => {
+  for (const available of [true, false, 'pulled']) {
+    const api = libraryApi();
+    if (available) api.mods = [{ slug: 'saved-mod', name: 'Saved mod', summary: 'A saved mod.', creator_name: 'Creator', capabilities: [], category: 'Utilities' }];
+    if (available === 'pulled') api.library[0].pulled = true;
+    const selected = structuredClone(api.library[0]);
+    const p = await page('#/library', undefined, api);
+    if (available === 'pulled') assert.match(p.text(), /This release is unavailable/);
+    assert.equal(p.document.querySelector('#app [role="status"]').textContent, '1 mod');
+    await p.click(p.document.querySelector('[data-focus-key="remove:saved-mod"]'));
+    assert.deepEqual(api.calls.find(call => call.method === 'POST'), {
+      method: 'POST', path: '/mods/saved-mod/remove', body: { sha256: selected.sha256, sent_at: selected.sent_at },
+    });
+    assert.match(p.text(), /Your library is empty/);
+    assert.match(p.document.getElementById('feedback').textContent, /Removed from your library/);
+    assert.match(p.document.getElementById('navigation').textContent, /My library \(0\)/);
+    assert.equal(p.document.activeElement.isConnected, true);
+  }
+});
+
+test('live library keeps failed removals retryable and refreshes a stale selection before another attempt', async () => {
+  const api = libraryApi();
+  api.remove = async () => { throw new Error('offline'); };
+  const p = await page('#/library', undefined, api);
+  const control = p.document.querySelector('[data-focus-key="remove:saved-mod"]');
+  await p.click(control);
+  assert.equal(control.disabled, false);
+  assert.equal(p.document.querySelectorAll('.mod-card').length, 1);
+  assert.match(p.document.getElementById('feedback').textContent, /Cannot reach/);
+  api.remove = async () => {
+    api.library[0].sent_at = '2026-01-02T00:00:00.000Z';
+    return { status: 409, body: { error: 'Your library changed. Review the current selection and try again.' } };
+  };
+  await p.click(control);
+  assert.equal(p.document.querySelectorAll('.mod-card').length, 1);
+  assert.match(p.document.getElementById('feedback').textContent, /library changed/);
+  api.remove = async () => ({ status: 403, body: { error: 'Refresh the page and try again.' } });
+  await p.click(p.document.querySelector('[data-focus-key="remove:saved-mod"]'));
+  assert.equal(api.calls.filter(call => call.method === 'POST').at(-1).body.sent_at, '2026-01-02T00:00:00.000Z');
+  assert.match(p.document.getElementById('feedback').textContent, /Refresh the page/);
+});
+
+test('pending removal rejects duplicate clicks and cannot replace a later route or account', async () => {
+  const api = libraryApi(); let finish;
+  api.remove = () => new Promise(resolve => { finish = resolve; });
+  const p = await page('#/library', undefined, api);
+  const control = p.document.querySelector('[data-focus-key="remove:saved-mod"]');
+  await p.click(control); await p.click(control);
+  assert.equal(control.disabled, true);
+  assert.equal(api.calls.filter(call => call.method === 'POST').length, 1);
+  api.account = { xuid: 'other', gamertag: 'Other player', role: 'player' }; api.library = [];
+  await p.route('#/library');
+  assert.match(p.document.getElementById('account').textContent, /Other player/);
+  await p.route('#/');
+  finish({ status: 200, body: { removed: true } }); await settle();
+  assert.match(p.text(), /Find your next addition/);
+  assert.doesNotMatch(p.document.getElementById('feedback').textContent, /Removed/);
+});
+
+test('library serializes different-card removals and keeps recreated filter controls disabled while pending', async () => {
+  const api = libraryApi(); let finish;
+  api.library.push({ ...api.library[0], slug: 'other-mod', sha256: 'b'.repeat(64) });
+  api.remove = body => new Promise(resolve => { finish = () => {
+    api.library = api.library.filter(item => item.sha256 !== body.sha256);
+    resolve({ status: 200, body: { removed: true } });
+  }; });
+  const p = await page('#/library', undefined, api);
+  await p.click(p.document.querySelector('[data-focus-key="remove:saved-mod"]'));
+  await p.click(p.document.querySelector('[data-focus-key="remove:other-mod"]'));
+  assert.equal(api.calls.filter(call => call.method === 'POST').length, 1);
+  await p.input('#mod-search', '');
+  const recreated = p.document.querySelector('[data-focus-key="remove:saved-mod"]');
+  assert.equal(recreated.disabled, true);
+  await p.click(recreated);
+  assert.equal(api.calls.filter(call => call.method === 'POST').length, 1);
+  finish(); await settle();
+  assert.equal(p.document.querySelectorAll('.mod-card').length, 1);
+  await p.click(p.document.querySelector('[data-focus-key="remove:other-mod"]'));
+  finish(); await settle();
+  assert.match(p.text(), /Your library is empty/);
+});
+
 test('draft steps preserve content, preview escapes HTML, and another account cannot read a saved draft', async () => {
   const p = await page('#/submit');
   await p.signIn('BlockSmith42');
