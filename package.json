@@ -1,0 +1,15 @@
+{
+  "name": "cinnabar-website",
+  "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs"
+  },
+  "dependencies": {
+    "@bytecodealliance/jco-transpile": "0.20.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "linkedom": "0.18.12"
+  }
+}
