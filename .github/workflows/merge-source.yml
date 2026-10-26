@@ -1,0 +1,35 @@
+name: Merge client inputs
+
+on:
+  workflow_run:
+    workflows: [Website]
+    types: [completed]
+    branches: ['automation/client-inputs-*']
+
+permissions: {}
+
+concurrency:
+  group: merge-client-inputs
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    if: >-
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'automation/client-inputs-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Merge the validated source pin and schedule deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 merge_source.py

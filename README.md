@@ -38,8 +38,11 @@ Sidebar chapter numbers are disabled; upstream chapter titles are preserved.
 The hourly Update client inputs workflow checks the client's `dev` branch. It
 opens a tested PR changing the pin only when one of the declared inputs changes;
 unrelated client commits leave the pin alone. One input-update PR stays open at a
-time. Updates require review and merge into `main` before deployment. To check
-manually:
+time. After the Website workflow verifies the exact branch head, the Merge client
+inputs workflow squash-merges same-repository automation PRs targeting `main` that
+modify only `source.json`. It dispatches Website on `main` to deploy the merged
+pin, then deletes the automation branch. Human PRs keep their usual review path.
+To check manually:
 
 ```sh
 python3 mdbook.py
