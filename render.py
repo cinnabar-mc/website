@@ -3,17 +3,52 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 import random
 import shutil
+import subprocess
+import tempfile
 from urllib.parse import quote
 import xml.etree.ElementTree as ET
 
 from source import CHECKOUT, load_config
+from mdbook import binary
 
 
 HERE = Path(__file__).resolve().parent
 INPUTS = load_config()["inputs"]
+
+
+def build_book(repository, output, red):
+    """Build the pinned book with site-owned styling without changing its source."""
+    book = repository / INPUTS["modding"]
+    if not (book / "book.toml").is_file():
+        raise FileNotFoundError("The pinned client inputs must contain docs/modding/book.toml")
+    executable = binary()
+    destination = output.resolve() / "docs" / "modding"
+    with tempfile.TemporaryDirectory() as temporary:
+        staged = Path(temporary) / "book"
+        shutil.copytree(book, staged)
+        theme = staged / "theme"
+        shutil.copytree(HERE / "docs-theme", theme, dirs_exist_ok=True)
+        shutil.copyfile(repository / INPUTS["icon"], theme / "favicon.svg")
+        stylesheet = theme / "cinnabar.css"
+        stylesheet.write_text(stylesheet.read_text().replace("@@RED@@", red))
+        header = theme / "header.hbs"
+        icon = "data:image/svg+xml," + quote((repository / INPUTS["icon"]).read_text(), safe="")
+        header.write_text(header.read_text().replace("@@FAVICON@@", icon))
+        environment = dict(os.environ, **{
+            "MDBOOK_OUTPUT__HTML__THEME": "theme",
+            "MDBOOK_OUTPUT__HTML__ADDITIONAL_CSS": '["theme/cinnabar.css"]',
+            "MDBOOK_OUTPUT__HTML__DEFAULT_THEME": "navy",
+            "MDBOOK_OUTPUT__HTML__PREFERRED_DARK_THEME": "navy",
+            "MDBOOK_OUTPUT__HTML__SITE_URL": "/docs/modding/",
+        })
+        if destination.exists():
+            shutil.rmtree(destination)
+        subprocess.run([str(executable), "build", str(staged), "--dest-dir", str(destination)],
+                       env=environment, check=True)
 
 
 def build(repository, output):
@@ -55,6 +90,7 @@ def build(repository, output):
     (output / "texture.svg").write_text(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">' + pixels + "</svg>"
     )
+    build_book(repository, output, red)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,6 @@
+[book]
+title = "Cinnabar modding"
+language = "en"
+
+[output.html]
+site-url = "/docs/modding/"

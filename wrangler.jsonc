@@ -3,7 +3,9 @@
   "account_id": "a16be1f911ae0c715166f97c4af654eb",
   "compatibility_date": "2026-10-15",
   "assets": {
-    "directory": "dist"
+    "directory": "dist",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
   },
   "observability": {
     "enabled": false

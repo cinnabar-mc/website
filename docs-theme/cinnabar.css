@@ -1,0 +1,54 @@
+:root {
+    --main-font: system-ui, sans-serif;
+    --mono-font: ui-monospace, monospace;
+    --cinnabar-red: @@RED@@;
+}
+
+.navy {
+    --bg: #141815;
+    --fg: #edf2eb;
+    --sidebar-bg: #1c231d;
+    --sidebar-fg: #c4cdc1;
+    --sidebar-active: #f8c1af;
+    --sidebar-non-existant: #acb7a9;
+    --sidebar-spacer: #394337;
+    --sidebar-header-border-color: var(--cinnabar-red);
+    --scrollbar: #63725c;
+    --icons: #acb7a9;
+    --icons-hover: #fff;
+    --links: #f8c1af;
+    --inline-code-color: #e6d7a8;
+    --theme-popup-bg: #1c231d;
+    --theme-popup-border: #505b4c;
+    --theme-hover: #303b30;
+    --quote-bg: #1c231d;
+    --quote-border: #63725c;
+    --table-border-color: #505b4c;
+    --table-header-bg: #303b30;
+    --table-alternate-bg: #1c231d;
+    --searchbar-border-color: #505b4c;
+    --searchbar-bg: #101511;
+    --searchbar-fg: #fff;
+    --searchresults-header-fg: #c4cdc1;
+    --searchresults-border-color: #505b4c;
+    --searchresults-li-bg: #1c231d;
+    --search-mark-bg: #451510;
+}
+
+html, body { font-family: var(--main-font); }
+/* Keep the site header above a toolbar that stays available while reading. */
+.page { margin-block-start: 0; }
+#mdbook-menu-bar-hover-placeholder { display: none; }
+#mdbook-menu-bar { position: sticky; top: 0 !important; }
+.content { line-height: 1.7; }
+.content h1, .content h2, .content h3 { line-height: 1.3; }
+.navy .content pre, .navy .content code { background: #101511; }
+.cinnabar-header { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 64px; padding: 0 24px; border-bottom: 1px solid #394337; background: #141815; color: #c4cdc1; font: 500 14px/1.5 system-ui, sans-serif; }
+.cinnabar-header a { display: flex; align-items: center; gap: 12px; min-height: 44px; color: inherit; text-decoration: none; }
+.cinnabar-header a:hover { color: #fff; }
+.cinnabar-header a:focus-visible { outline: 2px solid #f8c1af; outline-offset: 4px; }
+.cinnabar-home { font-weight: 600; }
+
+@media print {
+    .cinnabar-header { display: none; }
+}
