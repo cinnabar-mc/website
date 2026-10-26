@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore free community mods for Cinnabar.">
+  <title>Marketplace · Cinnabar</title>
+  <link rel="icon" type="image/svg+xml" href="@@FAVICON@@">
+  <link rel="stylesheet" href="/site.css">
+  <link rel="stylesheet" href="/marketplace/marketplace.css">
+  <script src="/marketplace/marketplace-model.js" defer></script>
+  <script src="/marketplace/marketplace.js" defer></script>
+</head>
+<body class="marketplace-page">
+  <a class="skip-link" href="#main">Skip to marketplace</a>
+  @@SITE_HEADER@@
+  <main id="main" class="shell">
+    <div class="page-heading">
+      <div class="marketplace-title">
+        <img class="logo marketplace-logo" src="/title.png" alt="Cinnabar" width="1022" height="282">
+        <div><h1>Marketplace</h1><p>Small additions. More ways to make it yours.</p></div>
+      </div>
+      <div class="account-tools">
+        <button type="button" class="subtle account-button" id="account-link" aria-label="Account" data-focus-key="nav:account" disabled>
+          <span class="avatar" id="account-avatar" aria-hidden="true"></span>
+          <span class="account-summary"><strong id="account-name">Account</strong><span id="account-role"></span></span>
+        </button>
+      </div>
+    </div>
+    <nav class="workspace-nav" aria-label="Marketplace sections" id="workspace-nav"></nav>
+    <p id="feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+    <div id="workspace"><div class="loading" role="status">Loading mods…</div></div>
+    <noscript><p class="notice">Enable JavaScript to browse mods and manage your library.</p></noscript>
+    <footer><span>Cinnabar community mods</span><span>Made for Cinnabar</span></footer>
+  </main>
+</body>
+</html>

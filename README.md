@@ -22,6 +22,34 @@ names the release manifest, API contract, title and icon used by the renderer.
 `source.py fetch` materializes only those files in the ignored `.source/` checkout.
 To render against another local client checkout, use `python3 render.py --source PATH`.
 
+## Marketplace proof of concept
+
+`/marketplace/` adds a free community mod storefront with search, category filters,
+listing permissions, and My library. It opens as a fictional signed-in player.
+**Account → Switch account** offers the shared player, creator, moderator, and
+administrator profiles. Creators can save and submit listing text; moderators
+record review decisions; administrators manage staff assignments. Known profile
+names appear in the roster and audit log. Fresh state derives its initial roster
+from review/staff capabilities in the shared catalog; saved roster changes survive
+reloads. **Account → Preferences → Reset saved data** restores the starting state.
+
+The catalog and Microsoft/game-account profiles are fictional scenarios. State
+stays in browser storage, with existing account IDs and saved changes retained.
+There is no real authentication, backend session, upload, download, installation,
+server publishing, or permission grant. Profile metadata never authorizes actions;
+capabilities and transitions come from the shared role policy. Adding to a library
+records a selection only. Production Microsoft registration and backend work
+remain pending. These scope notes belong here rather than in product banners.
+
+`source.json` declares the client's `crates/launcher/data/marketplace-demo.json`;
+the renderer copies it unchanged to `dist/marketplace/catalog.json`. Account profiles, roles,
+capabilities, review transitions, and reason requirements come from that file.
+Run the normal build/test commands above, then preview with
+`python3 -m http.server 8000 --directory dist` and open `/marketplace/`.
+
+See [screen design](docs/marketplace-design.md) and the client's
+[production API and identity plan](https://github.com/cinnabar-mc/cinnabar/blob/dev/docs/marketplace.md).
+
 The hourly Update client inputs workflow checks the client's `dev` branch. It
 opens a tested PR changing the pin only when one of the declared inputs changes;
 unrelated client commits leave the pin alone. One input-update PR stays open at a
