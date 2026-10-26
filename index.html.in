@@ -7,6 +7,7 @@
   <title>Cinnabar</title>
   <link rel="icon" type="image/svg+xml" href="@@FAVICON@@">
   <style>
+    @@SITE_HEADER_STYLES@@
     :root { --cinnabar-red: @@RED@@; font-family: system-ui, sans-serif; color-scheme: dark; }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; min-height: 100svh; padding: 0 40px 40px; background: #141815; color: #fff; isolation: isolate; }
@@ -18,7 +19,6 @@
     .logo { width: 100%; height: auto; display: block; filter: drop-shadow(0 16px 28px #0007); }
     .description { margin: 0 0 8px; color: #edf2eb; font: 400 1.25rem/1.7 system-ui, sans-serif; }
     .actions { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 16px; max-width: 100%; margin-top: 32px; }
-    .socials { display: flex; align-items: center; gap: 24px; }
     .online-count { min-height: 1.6em; margin: 4px 0 16px; color: #c4cdc1; text-align: left; font: 400 .8125rem/1.6 system-ui, sans-serif; font-variant-numeric: tabular-nums; }
     .online-count:empty { visibility: hidden; }
     .online-count::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 9px; background: #95c783; vertical-align: .1em; }
@@ -42,8 +42,6 @@
     .chart-cursor { stroke: #c4cdc1; stroke-width: 1; stroke-dasharray: 3 3; }
     #history-message { margin: 0; color: #acb7a9; text-align: center; font-size: .8125rem; line-height: 1.7; }
     .chart-detail { min-height: 1.5em; margin: 0; color: #acb7a9; font: .6875rem/1.5 ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-    .github, .discord { display: flex; align-items: center; gap: 8px; min-height: 44px; color: #c4cdc1; font: 500 .8125rem/1.5 system-ui, sans-serif; text-decoration: none; }
-    .github svg, .discord svg { width: 18px; height: 18px; fill: currentColor; }
     button { border: 2px solid var(--button-border, #180d0b); border-radius: 0; background: var(--button-face, var(--cinnabar-red)); color: #fff; box-shadow: inset 0 3px #ffffff35, inset 3px 0 #ffffff16, inset -3px 0 #0002, inset 0 -4px #0004, 0 5px 0 var(--button-base, #451510), 0 7px 0 #0d100d, 0 14px 25px #0004; cursor: pointer; }
     button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 14px; padding: 17px 28px; min-height: 62px; max-width: 100%; font: 700 1rem/1.5 ui-monospace, monospace; text-shadow: 0 2px #0006; }
     button svg { width: 20px; height: 20px; flex: 0 0 20px; fill: currentColor; }
@@ -78,18 +76,11 @@
     .first-open { margin: 20px 0 0; font-size: .875rem; }
     .first-open code { display: block; margin-top: 8px; padding: 10px; background: #101511; overflow-wrap: anywhere; font: .8125rem/1.6 ui-monospace, monospace; }
     #copy-status { margin-bottom: 0; font-size: .875rem; }
-    button:focus-visible, .github:focus-visible, .discord:focus-visible { outline: 2px solid #f8c1af; outline-offset: 4px; }
+    button:focus-visible { outline: 2px solid #f8c1af; outline-offset: 4px; }
     ::selection { background: #a82c22; color: #fff; }
-    .site-header { width: min(100%, 1100px); margin: auto; padding: 24px 0; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid #394337; }
-    .brand-home { display: flex; align-items: center; gap: 12px; color: #d5dfd1; text-decoration: none; font-size: .875rem; font-weight: 600; }
-    .brand-home:focus-visible { outline: 2px solid #f8c1af; outline-offset: 4px; }
-    .github:hover, .discord:hover { color: #fff; }
     .hero { width: 100%; display: flex; flex-direction: column; align-items: center; padding: 36px 0 32px; }
     @media (max-width: 700px) {
       body { padding: 0 20px 32px; }
-      .site-header { padding: 12px 0; gap: 16px; }
-      .brand-home span { display: none; }
-      .socials { gap: 16px; }
       .hero { padding: 28px 0; }
       .logo-motion { margin-bottom: 12px; }
       .description { font-size: 1.125rem; }
@@ -106,13 +97,7 @@
   </style>
 </head>
 <body>
-  <header class="site-header">
-    <a class="brand-home" href="/" aria-label="Cinnabar home"><img src="@@FAVICON@@" alt="" width="24" height="24"><span>Cinnabar</span></a>
-    <div class="socials">
-      <a class="github" href="@@REPOSITORY_URL@@" aria-label="Cinnabar on GitHub" title="Cinnabar on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297C5.37.297 0 5.67 0 12.297c0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.043-1.61-4.043-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.729.083-.729 1.205.084 1.838 1.237 1.838 1.237 1.07 1.835 2.809 1.305 3.495.998.108-.776.419-1.305.762-1.605-2.665-.303-5.467-1.334-5.467-5.931 0-1.31.469-2.381 1.236-3.221-.124-.303-.536-1.524.117-3.176 0 0 1.008-.322 3.301 1.23a11.52 11.52 0 0 1 3.003-.404c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.655 1.652.243 2.873.119 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.625-5.479 5.921.43.372.823 1.102.823 2.222 0 1.606-.015 2.898-.015 3.293 0 .322.216.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg><span>GitHub</span></a>
-      <a class="discord" href="https://discord.gg/MeEz7BEHcM" aria-label="Join Cinnabar on Discord" title="Join Cinnabar on Discord"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="@@DISCORD_MARK@@"/></svg><span>Discord</span></a>
-    </div>
-  </header>
+  @@SITE_HEADER@@
   <main>
     <div class="hero">
       <div class="logo-motion"><img class="logo" src="/title.png" alt="Cinnabar" width="1022" height="282"></div>

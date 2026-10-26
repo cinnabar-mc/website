@@ -8,9 +8,11 @@ and retains its [PolyForm Noncommercial license](LICENSE).
 
 ## Build and test
 
-Requires Python 3.11+, Node.js 22+, and Git. No Rust or game assets are needed.
+Requires Python 3.11+, Node.js 22+, Git, and the pinned mdBook binary. No Rust or
+game assets are needed.
 
 ```sh
+python3 mdbook.py
 python3 source.py fetch
 python3 render.py
 node --test tests/*.test.cjs
@@ -18,9 +20,20 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
 `dist/` contains generated files. `source.json` pins a full client commit and
-names the release manifest, API contract, title and icon used by the renderer.
-`source.py fetch` materializes only those files in the ignored `.source/` checkout.
+names the release manifest, API contract, branding and modding book used by the renderer.
+`source.py fetch` materializes only those files and directories in the ignored `.source/` checkout.
 To render against another local client checkout, use `python3 render.py --source PATH`.
+
+`mdbook.py` downloads mdBook 0.5.4 from its release archives, verifies the pinned
+SHA-256 for the current platform, and installs it in the ignored `.tools/` directory.
+Both build workflows use the same installer. It supports Linux and macOS on
+x86-64 and ARM64. The renderer builds the book at `dist/docs/modding/`, applying
+the website's `docs-theme/` overrides to a temporary copy of the book.
+
+The landing page and book share `site-header.html.in` and `site-header.css`.
+The book places its sidebar and search controls in that header row, marks Docs
+as the current page, and uses a dark theme without theme or print controls.
+Sidebar chapter numbers are disabled; upstream chapter titles are preserved.
 
 The hourly Update client inputs workflow checks the client's `dev` branch. It
 opens a tested PR changing the pin only when one of the declared inputs changes;
@@ -32,6 +45,7 @@ pin, then deletes the automation branch. Human PRs keep their usual review path.
 To check manually:
 
 ```sh
+python3 mdbook.py
 python3 source.py update
 python3 render.py
 ```
@@ -53,6 +67,12 @@ The `RestartFU/configurations` repository owns the custom domain's Caddy proxy.
 It forwards requests to the Worker over HTTPS while preserving the public domain,
 path and query string. Moving this repository does not require a hosting or DNS
 change. The workflow's `WEBSITE_URL` selects the post-deploy verification target.
+
+Static assets use `auto-trailing-slash`: `/docs/modding/` serves the book's
+`index.html`, and nested chapter paths serve their matching HTML files. Requests
+for `.html` pages redirect to the clean URL. With `404-page`, missing book paths
+return the book's generated `404.html` with status 404; other missing paths return
+a normal 404. No route falls back to the landing page.
 
 ## Player presence
 

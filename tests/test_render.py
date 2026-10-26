@@ -77,6 +77,7 @@ class RenderTests(unittest.TestCase):
         contract.write_text(json.dumps({"constants": [{
             "rust_name": "CINNABAR_API_BASE_URL", "value": "https://fixture-api.invalid/",
         }]}))
+        shutil.copytree(SITE / "tests/fixtures/modding", self.repository / RENDER.INPUTS["modding"])
 
     def config_from_output(self):
         script = (self.output / "downloads.js").read_text()
@@ -108,7 +109,7 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(sorted(positions, key=positions.get),
                          ["download", "disclaimer", "online-count", "history-plot"])
 
-    def test_build_requires_only_artwork_and_manifest_and_redirects_to_release_assets(self):
+    def test_build_uses_declared_inputs_and_redirects_to_release_assets(self):
         RENDER.build(self.repository, self.output)
         config = self.config_from_output()
         self.assertEqual(config["online_count_url"], "https://fixture-api.invalid/v1/presence/count")
@@ -126,9 +127,85 @@ class RenderTests(unittest.TestCase):
                          f'https://github.com/{self.config["repository"]}/releases/download/nightly/')
         self.assertEqual(config["nightly_install_command"], config["install_command"] + " -s -- --channel nightly")
         self.assertEqual({path.name for path in self.output.iterdir()}, {
-            "index.html", "downloads.js", "app.js", "presence.js", "history.js", "title.png", "texture.svg",
+            "index.html", "downloads.js", "app.js", "presence.js", "history.js", "title.png", "texture.svg", "docs",
         })
         self.assertFalse((self.output / self.config["install_script"]).exists())
+
+    def test_docs_link_is_in_the_main_navigation(self):
+        """Give desktop and mobile the same accessible link to the book."""
+        RENDER.build(self.repository, self.output)
+        page = Page()
+        page.feed((self.output / "index.html").read_text())
+        links = [(attrs, parents) for tag, attrs, parents in page.elements
+                 if tag == "a" and attrs.get("class") == "docs"]
+        self.assertEqual(len(links), 1)
+        attrs, parents = links[0]
+        self.assertEqual(attrs["href"], "/docs/modding/")
+        self.assertTrue(any(tag == "nav" and attrs.get("aria-label") == "Main navigation"
+                            for tag, attrs in parents))
+        self.assertIn("header", [tag for tag, _ in parents])
+
+    def test_home_and_book_share_navigation_markup_and_styles(self):
+        """Keep the brand, destinations, icons and navigation styles identical."""
+        RENDER.build(self.repository, self.output)
+        home = Page()
+        home_html = (self.output / "index.html").read_text()
+        home.feed(home_html)
+        book = Page()
+        book.feed((self.output / "docs/modding/guides/getting-started.html").read_text())
+
+        def header_elements(page):
+            """Collect header markup, allowing only the Docs current-page marker to differ."""
+            return [(tag, {key: value for key, value in attrs.items() if key != "aria-current"})
+                    for tag, attrs, parents in page.elements
+                    if any(parent.get("class") == "site-header" for _, parent in parents)]
+
+        self.assertEqual(header_elements(home), header_elements(book))
+        docs, = [attrs for tag, attrs, _ in book.elements
+                 if tag == "a" and attrs.get("class") == "docs"]
+        self.assertEqual(docs["aria-current"], "page")
+        shared_styles = (SITE / "site-header.css").read_text()
+        self.assertIn(shared_styles, home_html)
+        stylesheet, = (self.output / "docs/modding/theme").glob("cinnabar-*.css")
+        self.assertTrue(stylesheet.read_text().startswith(shared_styles))
+
+    def test_book_has_no_print_action_or_numbered_sidebar_sections(self):
+        """Apply book-wide options without changing the client book configuration."""
+        RENDER.build(self.repository, self.output)
+        docs = self.output / "docs/modding"
+        self.assertNotIn('aria-label="Print this book"', (docs / "index.html").read_text())
+        self.assertFalse((docs / "print.html").exists())
+        self.assertNotIn('<strong aria-hidden="true">', (docs / "toc.html").read_text())
+
+    def test_book_output_theme_and_nested_chapters_leave_source_unchanged(self):
+        """Build with the real pinned binary and keep upstream book files untouched."""
+        book = self.repository / RENDER.INPUTS["modding"]
+        before = {path.relative_to(book): path.read_bytes() for path in book.rglob("*") if path.is_file()}
+        RENDER.build(self.repository, self.output)
+        docs = self.output / "docs/modding"
+        self.assertTrue((docs / "index.html").is_file())
+        nested = (docs / "guides/getting-started.html").read_text()
+        self.assertIn("Getting started", nested)
+        self.assertIn('href="/" aria-label="Cinnabar home"', nested)
+        self.assertIn('href="/docs/modding/"', nested)
+        stylesheet, = docs.glob("theme/cinnabar-*.css")
+        self.assertIn("../" + stylesheet.relative_to(docs).as_posix(), nested)
+        self.assertIn("system-ui", stylesheet.read_text())
+        self.assertNotIn("@@", nested + stylesheet.read_text())
+        self.assertTrue((docs / "404.html").is_file())
+        favicon, = docs.glob("favicon-*.svg")
+        self.assertEqual(favicon.read_bytes(), (self.repository / RENDER.INPUTS["icon"]).read_bytes())
+        self.assertEqual(before, {path.relative_to(book): path.read_bytes() for path in book.rglob("*") if path.is_file()})
+        stale = docs / "removed-chapter.html"
+        stale.write_text("Old chapter")
+        RENDER.build(self.repository, self.output)
+        self.assertFalse(stale.exists())
+
+    def test_missing_upstream_book_fails_instead_of_publishing_a_fixture(self):
+        """Keep test documentation out of normal builds when the input is missing."""
+        shutil.rmtree(self.repository / RENDER.INPUTS["modding"])
+        with self.assertRaisesRegex(FileNotFoundError, "docs/modding/book.toml"):
+            RENDER.build(self.repository, self.output)
 
     def test_rendered_page_assets_and_mac_first_open_guidance_are_complete(self):
         RENDER.build(self.repository, self.output)
