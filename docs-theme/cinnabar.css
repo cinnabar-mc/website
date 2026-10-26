@@ -73,6 +73,10 @@ html .page #mdbook-menu-bar { grid-area: 1 / 1; align-self: center; justify-self
 
 @media (max-width: 700px) {
     html .page #mdbook-menu-bar { margin-left: 40px; }
+    /* Keep the close toggle at the drawer edge after mdBook shifts the page. */
+    html.sidebar-visible .page #mdbook-menu-bar { margin-left: calc(-1 * var(--page-padding)); }
+    .sidebar-visible .site-header .brand-home,
+    .sidebar-visible #mdbook-search-toggle { visibility: hidden; }
 }
 
 @media print {
