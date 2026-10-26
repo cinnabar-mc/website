@@ -30,6 +30,11 @@ Both build workflows use the same installer. It supports Linux and macOS on
 x86-64 and ARM64. The renderer builds the book at `dist/docs/modding/`, applying
 the website's `docs-theme/` overrides to a temporary copy of the book.
 
+The landing page and book share `site-header.html.in` and `site-header.css`.
+The book places its sidebar and search controls in that header row, marks Docs
+as the current page, and uses a dark theme without theme or print controls.
+Sidebar chapter numbers are disabled; upstream chapter titles are preserved.
+
 The hourly Update client inputs workflow checks the client's `dev` branch. It
 opens a tested PR changing the pin only when one of the declared inputs changes;
 unrelated client commits leave the pin alone. One input-update PR stays open at a

@@ -1,17 +1,17 @@
-:root {
+/* Override every built-in theme so a saved mdBook preference stays dark too. */
+:root, .navy, .light, .rust, .coal, .ayu {
     --main-font: system-ui, sans-serif;
     --mono-font: ui-monospace, monospace;
     --cinnabar-red: @@RED@@;
-}
-
-.navy {
+    --color-scheme: dark;
+    --content-max-width: 70ch;
     --bg: #141815;
     --fg: #edf2eb;
     --sidebar-bg: #1c231d;
     --sidebar-fg: #c4cdc1;
-    --sidebar-active: #f8c1af;
+    --sidebar-active: #fff;
     --sidebar-non-existant: #acb7a9;
-    --sidebar-spacer: #394337;
+    --sidebar-spacer: #505b4c;
     --sidebar-header-border-color: var(--cinnabar-red);
     --scrollbar: #63725c;
     --icons: #acb7a9;
@@ -36,19 +36,43 @@
 }
 
 html, body { font-family: var(--main-font); }
-/* Keep the site header above a toolbar that stays available while reading. */
-.page { margin-block-start: 0; }
-#mdbook-menu-bar-hover-placeholder { display: none; }
-#mdbook-menu-bar { position: sticky; top: 0 !important; }
+body { font-size: 16px; }
+
+/* Place the native sidebar and search controls in the shared header's row. */
+.page { display: grid; grid-template-columns: minmax(0, 1fr); margin-block-start: 0; }
+.site-header { grid-area: 1 / 1; position: sticky; top: 0; z-index: 101; background: var(--bg); }
+html .page #mdbook-menu-bar { grid-area: 1 / 1; align-self: center; justify-self: start; position: sticky; top: 24px !important; z-index: 102; width: 88px; height: 44px; margin: 0 0 0 120px; border: 0; background: transparent; }
+#mdbook-menu-bar .left-buttons { display: flex; }
+#mdbook-menu-bar .icon-button { box-sizing: border-box; width: 44px; height: 44px; line-height: 44px; }
+#mdbook-menu-bar-hover-placeholder, #mdbook-menu-bar .menu-title,
+#mdbook-theme-toggle, #mdbook-theme-list, #mdbook-menu-bar .right-buttons { display: none; }
+
 .content { line-height: 1.7; }
 .content h1, .content h2, .content h3 { line-height: 1.3; }
-.navy .content pre, .navy .content code { background: #101511; }
-.cinnabar-header { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 64px; padding: 0 24px; border-bottom: 1px solid #394337; background: #141815; color: #c4cdc1; font: 500 14px/1.5 system-ui, sans-serif; }
-.cinnabar-header a { display: flex; align-items: center; gap: 12px; min-height: 44px; color: inherit; text-decoration: none; }
-.cinnabar-header a:hover { color: #fff; }
-.cinnabar-header a:focus-visible { outline: 2px solid #f8c1af; outline-offset: 4px; }
-.cinnabar-home { font-weight: 600; }
+.content pre, .content code { background: #101511; }
+.content pre { border: 1px solid #394337; }
+.content pre code { color: #e1e8de; }
+.content pre, .content code, .mobile-nav-chapters, #mdbook-searchbar { border-radius: 0; }
+.sidebar { border-right: 1px solid #505b4c; }
+.chapter li a { display: block; flex: 1; padding: 5px 8px; border-left: 3px solid transparent; }
+.chapter a:hover { background: #303b30; }
+.chapter a.active { border-left-color: var(--cinnabar-red); background: #303b30; }
+.chapter li.chapter-item { line-height: 1.5; }
+
+.content .hljs-comment, .content .hljs-quote { color: #acb7a9; }
+.content .hljs-keyword, .content .hljs-selector-tag, .content .hljs-literal,
+.content .hljs-variable, .content .hljs-template-variable, .content .hljs-deletion { color: #f27a63; }
+.content .hljs-string, .content .hljs-regexp, .content .hljs-addition { color: #a1ce8f; }
+.content .hljs-number, .content .hljs-symbol, .content .hljs-bullet,
+.content .hljs-params, .content .hljs-meta, .content .hljs-link { color: #e6d7a8; }
+.content .hljs-title, .content .hljs-section, .content .hljs-attribute, .content .hljs-built_in { color: #f8c1af; }
+.content .hljs-type, .content .hljs-name, .content .hljs-attr,
+.content .hljs-selector-id, .content .hljs-selector-class { color: #c4cdc1; }
+
+@media (max-width: 700px) {
+    html .page #mdbook-menu-bar { top: 12px !important; margin-left: 40px; }
+}
 
 @media print {
-    .cinnabar-header { display: none; }
+    .site-header, #mdbook-menu-bar { display: none; }
 }

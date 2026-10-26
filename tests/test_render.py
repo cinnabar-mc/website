@@ -145,6 +145,38 @@ class RenderTests(unittest.TestCase):
                             for tag, attrs in parents))
         self.assertIn("header", [tag for tag, _ in parents])
 
+    def test_home_and_book_share_navigation_markup_and_styles(self):
+        """Keep the brand, destinations, icons and navigation styles identical."""
+        RENDER.build(self.repository, self.output)
+        home = Page()
+        home_html = (self.output / "index.html").read_text()
+        home.feed(home_html)
+        book = Page()
+        book.feed((self.output / "docs/modding/guides/getting-started.html").read_text())
+
+        def header_elements(page):
+            """Collect header markup, allowing only the Docs current-page marker to differ."""
+            return [(tag, {key: value for key, value in attrs.items() if key != "aria-current"})
+                    for tag, attrs, parents in page.elements
+                    if any(parent.get("class") == "site-header" for _, parent in parents)]
+
+        self.assertEqual(header_elements(home), header_elements(book))
+        docs, = [attrs for tag, attrs, _ in book.elements
+                 if tag == "a" and attrs.get("class") == "docs"]
+        self.assertEqual(docs["aria-current"], "page")
+        shared_styles = (SITE / "site-header.css").read_text()
+        self.assertIn(shared_styles, home_html)
+        stylesheet, = (self.output / "docs/modding/theme").glob("cinnabar-*.css")
+        self.assertTrue(stylesheet.read_text().startswith(shared_styles))
+
+    def test_book_has_no_print_action_or_numbered_sidebar_sections(self):
+        """Apply book-wide options without changing the client book configuration."""
+        RENDER.build(self.repository, self.output)
+        docs = self.output / "docs/modding"
+        self.assertNotIn('aria-label="Print this book"', (docs / "index.html").read_text())
+        self.assertFalse((docs / "print.html").exists())
+        self.assertNotIn('<strong aria-hidden="true">', (docs / "toc.html").read_text())
+
     def test_book_output_theme_and_nested_chapters_leave_source_unchanged(self):
         """Build with the real pinned binary and keep upstream book files untouched."""
         book = self.repository / RENDER.INPUTS["modding"]
