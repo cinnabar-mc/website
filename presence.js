@@ -10,7 +10,7 @@
     window.clearTimeout(timer);
     try {
       const response = await fetch(window.CINNABAR_DOWNLOADS.online_count_url, {
-        credentials: 'omit', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(5000),
+        cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) throw new Error('Count unavailable');
       const body = await response.json();

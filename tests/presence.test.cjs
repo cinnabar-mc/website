@@ -42,6 +42,14 @@ async function page(reply = {online: 42}, hidden = false) {
     }};
 }
 
+test('bypasses browser caching on every poll so the count follows new samples', async () => {
+  const p = await page({online: 1});
+  assert.equal(p.requests[0].options.cache, 'no-store');
+  await p.refresh({online: 19});
+  assert.equal(p.requests[1].options.cache, 'no-store');
+  assert.equal(p.label.textContent, '19 people are using Cinnabar right now');
+});
+
 test('shows live counts with singular, plural, zero and formatted numbers', async () => {
   const p = await page();
   assert.equal(p.label.textContent, '42 people are using Cinnabar right now');
