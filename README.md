@@ -78,8 +78,8 @@ a normal 404. No route falls back to the landing page.
 
 The player activity section shows unique connected, visible Cinnabar accounts
 from `GET /v1/presence/count`. The API origin comes from the shared bridge contract.
-It refreshes once per minute while the page is visible, with a five-second request
-timeout. Failed or invalid responses clear the count; background tabs stop polling.
+It refreshes once per minute while the page is visible, bypassing the browser cache,
+with a five-second request timeout. Failed or invalid responses clear the count; background tabs stop polling.
 Deploy the API endpoint before the website to enable the count.
 
 The player chart reads `GET /v1/presence/history?range=24h|7d|30d` from the same
