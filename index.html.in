@@ -20,6 +20,8 @@
     .description { margin: 0 0 8px; color: #edf2eb; font: 400 1.25rem/1.7 system-ui, sans-serif; }
     .actions { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 16px; max-width: 100%; margin-top: 32px; }
     .online-count { min-height: 1.6em; margin: 4px 0 16px; color: #c4cdc1; text-align: left; font: 400 .8125rem/1.6 system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+    .unique-count { min-height: 1.6em; margin: -12px 0 16px; color: #acb7a9; font-size: .75rem; line-height: 1.6; font-variant-numeric: tabular-nums; }
+    .unique-count:empty { visibility: hidden; }
     .online-count:empty { visibility: hidden; }
     .online-count::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 9px; background: #95c783; vertical-align: .1em; }
     .player-history { --chart-height: 148px; width: 100%; margin: 0 0 24px; padding: 24px 0 0; border-top: 1px solid #45503f; text-align: left; }
@@ -125,6 +127,7 @@
         </div>
       </div>
       <p class="online-count" id="online-count" role="status" aria-atomic="true"></p>
+      <p class="unique-count" id="unique-count" role="status" aria-atomic="true"></p>
       <p class="chart-summary" id="history-summary"></p>
       <div class="chart-body">
         <svg id="history-plot" role="img" tabindex="0" aria-label="Player count history. Use left and right arrow keys to inspect samples." aria-describedby="history-summary history-detail" hidden></svg>
