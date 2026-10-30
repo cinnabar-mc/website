@@ -76,6 +76,15 @@ a normal 404. No route falls back to the landing page.
 
 ## Player presence
 
+The activity section also shows unique Cinnabar users since tracking began, from
+`GET /v1/users/count` (`{"unique":0}`). This counts verified accounts once across
+reconnects and devices, including accounts with presence visibility off. The API
+retains salted account digests and publishes only the total. Tracking starts at
+API deployment with no historical backfill; existing sessions count on their next
+successful login. Deploy that endpoint before the website to enable this count.
+It polls independently once per visible minute with the same timeout and failure
+handling as the online count; a missing endpoint leaves just this count empty.
+
 The player activity section shows unique connected, visible Cinnabar accounts
 from `GET /v1/presence/count`. The API origin comes from the shared bridge contract.
 It refreshes once per minute while the page is visible, bypassing the browser cache,

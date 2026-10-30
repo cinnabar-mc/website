@@ -67,6 +67,7 @@ def build(repository, output):
     api_origin = next(value["value"] for value in contract["constants"]
                       if value["rust_name"] == "CINNABAR_API_BASE_URL")
     config["online_count_url"] = api_origin.rstrip("/") + "/v1/presence/count"
+    config["unique_count_url"] = api_origin.rstrip("/") + "/v1/users/count"
     config["online_history_url"] = api_origin.rstrip("/") + "/v1/presence/history"
     icon = (repository / INPUTS["icon"]).read_text()
     red = ET.fromstring(icon).find("{http://www.w3.org/2000/svg}rect").attrib["fill"]

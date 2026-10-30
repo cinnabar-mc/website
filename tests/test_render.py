@@ -99,7 +99,7 @@ class RenderTests(unittest.TestCase):
                 self.assertIn("header", [parent for parent, _ in ancestors])
                 self.assertNotIn("main", [parent for parent, _ in ancestors])
             key = attrs.get("id") or attrs.get("class")
-            if key in {"download", "disclaimer", "online-count", "history-plot"}:
+            if key in {"download", "disclaimer", "online-count", "unique-count", "history-plot"}:
                 positions[key] = index
                 if key in {"download", "disclaimer"}:
                     self.assertTrue(any(parent.get("class") == "hero" for _, parent in ancestors))
@@ -107,12 +107,13 @@ class RenderTests(unittest.TestCase):
                     self.assertTrue(any(parent.get("aria-labelledby") == "history-title"
                                         for _, parent in ancestors))
         self.assertEqual(sorted(positions, key=positions.get),
-                         ["download", "disclaimer", "online-count", "history-plot"])
+                         ["download", "disclaimer", "online-count", "unique-count", "history-plot"])
 
     def test_build_uses_declared_inputs_and_redirects_to_release_assets(self):
         RENDER.build(self.repository, self.output)
         config = self.config_from_output()
         self.assertEqual(config["online_count_url"], "https://fixture-api.invalid/v1/presence/count")
+        self.assertEqual(config["unique_count_url"], "https://fixture-api.invalid/v1/users/count")
         self.assertEqual(config["online_history_url"], "https://fixture-api.invalid/v1/presence/history")
         self.assertEqual(config["assets"], self.config["assets"])
         self.assertEqual(config["manual_assets"], self.config["manual_assets"])
