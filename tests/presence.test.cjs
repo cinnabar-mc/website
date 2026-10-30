@@ -99,14 +99,14 @@ test('pauses polling in background tabs and refreshes on return', async () => {
 
 test('shows unique users independently with zero, singular and formatted totals', async () => {
   const p = await page({online: 4, unique: 1});
-  assert.equal(p.unique.textContent, '1 unique Cinnabar user since tracking began');
+  assert.equal(p.unique.textContent, '1 unique user');
   assert.equal(p.requests[1].url, 'https://api.invalid/v1/users/count');
   assert.equal(p.requests[1].options.cache, 'no-store');
   assert.equal(p.requests[1].options.credentials, 'omit');
   await p.refresh({online: 0, unique: 0});
-  assert.equal(p.unique.textContent, '0 unique Cinnabar users since tracking began');
+  assert.equal(p.unique.textContent, '0 unique users');
   await p.refresh({online: 1, unique: 12345});
-  assert.equal(p.unique.textContent, `${(12345).toLocaleString()} unique Cinnabar users since tracking began`);
+  assert.equal(p.unique.textContent, `${(12345).toLocaleString()} unique users`);
   await p.visible(false);
   assert.equal(p.unique.textContent, '');
   assert.equal(p.timers.size, 0);
@@ -121,7 +121,7 @@ test('invalid or missing unique totals clear only that count and recover', async
     assert.equal(p.unique.textContent, '');
     assert.equal(p.label.textContent, '2 people are using Cinnabar right now');
     await p.refresh({online: 2, unique: 42});
-    assert.equal(p.unique.textContent, '42 unique Cinnabar users since tracking began');
+    assert.equal(p.unique.textContent, '42 unique users');
   }
   await p.refresh({unique: 42});
   assert.equal(p.label.textContent, '');
@@ -136,5 +136,5 @@ test('an unavailable unique-user endpoint leaves the online count working', asyn
   assert.equal(p.unique.textContent, '');
   assert.equal(p.label.textContent, '4 people are using Cinnabar right now');
   await p.refresh({online: 4, unique: 40});
-  assert.equal(p.unique.textContent, '40 unique Cinnabar users since tracking began');
+  assert.equal(p.unique.textContent, '40 unique users');
 });
