@@ -38,6 +38,6 @@
     ? '1 person is using Cinnabar right now'
     : `${count.toLocaleString()} people are using Cinnabar right now`);
   pollCount('unique-count', window.CINNABAR_DOWNLOADS.unique_count_url, 'unique', count => count === 1
-    ? '1 unique Cinnabar user since tracking began'
-    : `${count.toLocaleString()} unique Cinnabar users since tracking began`);
+    ? '1 unique user'
+    : `${count.toLocaleString()} unique users`);
 })();
